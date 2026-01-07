@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openreplay-shared-storage-pvc
+  namespace: app
+spec:
+  accessModes:
+    - ReadWriteMany  # RWX - allows mounting on multiple nodes
+  resources:
+    requests:
+      storage: 60Gi # Use appropriate storage class that supports RWX
+  storageClassName: nfs-local-nfs-subdir
