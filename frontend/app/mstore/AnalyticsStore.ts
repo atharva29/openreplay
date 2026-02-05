@@ -21,7 +21,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const defaultPayload = {
   sortOrder: 'desc',
   sortBy: 'created_at',
-  limit: 20,
+  limit: 10,
   startTimestamp: Date.now() - ONE_DAY_MS,
   endTimestamp: Date.now(),
   columns: [],
@@ -158,6 +158,26 @@ export default class AnalyticsStore {
     this.loading = loading;
   };
 
+  fetchPropertyEvents = async (propFilter: Filter) => {
+    this.setLoading(true);
+    try {
+      const data: EventsResponse = await analyticsService.getEvents({
+        ...this.payloadFilters,
+        filters: [propFilter],
+        columns: [...eventListColumns, 'description'],
+      });
+      return {
+        total: data.total,
+        events: data.events.map((ev) => new Event(ev)),
+      };
+    } catch (e) {
+      console.error('AnalyticsStore.fetchPropertyEvents', e);
+      return { events: [], total: 0 };
+    } finally {
+      this.setLoading(false);
+    }
+  };
+
   fetchEvents = async () => {
     this.newEvents = 0;
     this.lastFetchedAt = Date.now();
@@ -167,10 +187,10 @@ export default class AnalyticsStore {
         ...this.payloadFilters,
         columns: eventListColumns,
       });
-      this.events = {
-        total: data.total,
-        events: data.events.map((ev) => new Event(ev)),
-      };
+      this.setEvents(
+        data.events.map((ev) => new Event(ev)),
+        data.total,
+      );
 
       return data;
     } catch (e) {
@@ -179,6 +199,11 @@ export default class AnalyticsStore {
     } finally {
       this.setLoading(false);
     }
+  };
+
+  setEvents = (events: Event[], total: number) => {
+    this.events.events = events;
+    this.events.total = total;
   };
 
   checkLatest = async () => {
@@ -196,13 +221,20 @@ export default class AnalyticsStore {
     }
   };
 
-  fetchUsers = async (query: string) => {
+  fetchUsers = async (query: string, propName?: string) => {
     this.setLoading(true);
     try {
-      const data: UsersResponse = await analyticsService.getUsers({
-        ...this.usersPayloadFilters,
-        query,
-      });
+      const fullFilters = { ...this.usersPayloadFilters, query };
+      if (propName) {
+        const propFilter = filterStore.findEvent({ name: propName });
+        if (propFilter) {
+          propFilter.operator = 'isAny';
+          propFilter.readonly = true;
+          // @ts-ignore
+          fullFilters.filters = [...fullFilters.filters, propFilter];
+        }
+      }
+      const data: UsersResponse = await analyticsService.getUsers(fullFilters);
       this.users = {
         total: data.total,
         users: data.users.map((user) => new User(user)),

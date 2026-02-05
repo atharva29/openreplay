@@ -2,6 +2,16 @@ migrationJob:
   podAnnotations:
     linkerd.io/inject: disabled
 
+# Offline migration using pre-built migration image (for air-gapped environments)
+# When enabled, uses bundled schema files instead of cloning from GitHub
+offlineMigration:
+  enabled: false
+  image:
+    registry: ghcr.io/openreplay
+    repository: migration
+    # Defaults to Chart.AppVersion if not specified
+    tag: ""
+
 postgresql:
   image:
     registry: ghcr.io/openreplay
@@ -47,6 +57,8 @@ vault: &vault
 ingress-nginx:
   enabled: true
   controller:
+    image:
+      tag: 5.3.1-alpine
     enableSnippets: true
     ingressClass:
       name: openreplay
@@ -64,10 +76,13 @@ ingress-nginx:
             default "";
             "~.*-(\d+)(?:-.*|$)" $1;
           }
-          # Increase client body buffer to avoid temp file warnings for ingestion
-          client_body_buffer_size 512k;
         server-tokens: "false"
         server-snippets: |-
+          # Keep k8s ingress compatible health check for LB
+          location /healthz {
+            access_log off;
+            return 200 "ok";
+          }
           # Security headers
           add_header X-XSS-Protection "1; mode=block" always;
           add_header X-Content-Type-Options "nosniff" always;

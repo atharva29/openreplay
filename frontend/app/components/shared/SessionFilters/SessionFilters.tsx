@@ -106,7 +106,7 @@ function SessionFilters() {
   };
 
   return (
-    <Card className="rounded-lg" classNames={{ body: '!p-4' }}>
+    <Card className="rounded-lg!" classNames={{ body: 'p-4!' }}>
       <FilterListHeader
         title="Events"
         showEventsOrder={eventFilters.length > 0}
@@ -141,7 +141,7 @@ function SessionFilters() {
         handleMove={moveEventFilter}
       />
 
-      <Divider className="my-3" />
+      <Divider className="my-3!" />
 
       <FilterListHeader
         title="Filters"

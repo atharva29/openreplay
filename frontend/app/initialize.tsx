@@ -1,7 +1,6 @@
 import './styles/index.css';
 import './styles/global.css';
 import React from 'react';
-import '@ant-design/v5-patch-for-react-19';
 import { createRoot } from 'react-dom/client';
 import './init';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -14,7 +13,7 @@ import {
   Empty,
 } from 'antd';
 import { BrowserRouter } from 'react-router-dom';
-import { Notification, MountPoint } from 'UI';
+import { Notification, MountPoint, Icon } from 'UI';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AnimatedSVG from './components/shared/AnimatedSVG';
 import { ICONS } from './components/shared/AnimatedSVG/AnimatedSVG';
@@ -144,6 +143,11 @@ const ThemedApp: React.FC = () => {
         defaultBg: cssVar('gray-lightest'),
         defaultColor: cssVar('gray-darkest'),
       },
+      Spin: {
+        dotSize: 36,
+        dotSizeLG: 56,
+        dotSizeSM: 24,
+      },
     },
     token: {
       colorPrimary: cssVar('main'),
@@ -173,7 +177,30 @@ const ThemedApp: React.FC = () => {
 
   const renderEmpty = () => <Empty image={emptyImg} />;
   return (
-    <ConfigProvider theme={customTheme} renderEmpty={renderEmpty}>
+    <ConfigProvider
+      theme={customTheme}
+      renderEmpty={renderEmpty}
+      modal={{
+        mask: {
+          blur: false,
+        },
+      }}
+      spin={{
+        indicator: <AnimatedSVG size={null} name={ICONS.LOADER} />,
+      }}
+      drawer={{
+        mask: {
+          blur: false,
+        },
+      }}
+      tag={{
+        styles: {
+          root: {
+            marginInlineEnd: 8,
+          },
+        },
+      }}
+    >
       <App>
         <StoreProvider store={new RootStore()}>
           <DndProvider backend={HTML5Backend}>

@@ -5,7 +5,7 @@ import {
   stopTrackingNetwork,
 } from "~/utils/networkTracking";
 import { mergeRequests, SpotNetworkRequest } from "~/utils/networkTrackingUtils";
-import { safeApiUrl } from '~/utils/smallUtils'
+import { safeApiUrl, base64ToBlob } from '~/utils/smallUtils'
 import {
   attachDebuggerToTab,
   stopDebugger,
@@ -26,7 +26,8 @@ export default defineBackground(() => {
     comment: string;
     useHook: string;
     preview: string;
-    base64data: string;
+    base64data: string | string[];
+    mtype: string;
     duration: number;
     network: SpotNetworkRequest[];
     logs: { level: string; msg: string; time: number }[];
@@ -70,7 +71,8 @@ export default defineBackground(() => {
     comment: "",
     useHook: "",
     preview: "",
-    base64data: "",
+    base64data: [] as string[],
+    mtype: "video/webm",
     duration: 100,
     network: [],
     logs: [],
@@ -86,7 +88,6 @@ export default defineBackground(() => {
   };
   let contentArmy: Record<any, boolean> = {};
   let micStatus = "off";
-  let finalVideoBase64 = "";
   let finalReady = false;
   let finalSpotObj: SpotObj = defaultSpotObj;
   let injectNetworkRequests = [];
@@ -333,8 +334,8 @@ export default defineBackground(() => {
           setJWTToken(data.jwtToken);
         });
       }
-      finalVideoBase64 = "";
       const recArea = request.area;
+      finalSpotObj.base64data = [];
       finalSpotObj.startTs = Date.now();
       if (settings.networkLogs) {
         if (settings.useDebugger) {
@@ -574,7 +575,8 @@ export default defineBackground(() => {
         comment: "",
         useHook: "",
         preview: "",
-        base64data: "",
+        base64data: [],
+        mtype: "video/webm",
         duration: 100,
         network: [],
         logs: [],
@@ -588,7 +590,6 @@ export default defineBackground(() => {
         resolution: "",
         crop: null,
       };
-      finalVideoBase64 = "";
       finalReady = false;
       recordingState = {
         activeTabId: null,
@@ -602,7 +603,6 @@ export default defineBackground(() => {
         type: "offscr:stop-discard",
         target: "offscreen",
       });
-      finalVideoBase64 = "";
       finalReady = false;
       finalSpotObj = defaultSpotObj;
       recordingState = {
@@ -685,11 +685,14 @@ export default defineBackground(() => {
     }
     if (request.type === "offscr:video-data-chunk") {
       finalSpotObj.duration = request.duration;
+      (finalSpotObj.base64data as string[]).push(request.data);
+      finalSpotObj.mtype = request.mtype;
       void sendToActiveTab({
         type: "content:video-chunk",
         data: request.data,
         index: request.index,
         total: request.total,
+        mtype: request.mtype,
       });
     }
     if (request.type === "ort:pause") {
@@ -740,13 +743,7 @@ export default defineBackground(() => {
     }
     if (request.type === messages.content.from.saveSpotData) {
       Object.assign(finalSpotObj, request.spot);
-      return "pong";
-    }
-    if (request.type === messages.content.from.saveSpotVidChunk) {
-      finalVideoBase64 += request.part;
-      finalReady = request.index === request.total - 1;
-      if (finalReady) {
-        const getPlatformData = async () => {
+      const getPlatformData = async () => {
           const vendor = await browser.runtime.getPlatformInfo();
           const platform = `${vendor.os} ${vendor.arch}`;
           return { platform };
@@ -762,7 +759,6 @@ export default defineBackground(() => {
           crop: finalSpotObj.crop,
           vitals: finalSpotObj.vitals,
         };
-        const videoData = finalVideoBase64;
 
         getPlatformData().then(async ({ platform }) => {
           const cropped =
@@ -866,9 +862,8 @@ export default defineBackground(() => {
                     });
                   }
                   const { id, mobURL, videoURL } = resp;
-                  const link = settings.ingestPoint.includes(
-                    "api.openreplay.com",
-                  )
+                  const ingestUrl = settings.ingestPoint ? new URL(settings.ingestPoint) : { hostname: '' };
+                  const link = ingestUrl.hostname === "api.openreplay.com"
                     ? "https://app.openreplay.com"
                     : settings.ingestPoint;
                   void sendToActiveTab({
@@ -881,7 +876,7 @@ export default defineBackground(() => {
                       active: settings.openInNewTab,
                     });
                   }, 250);
-                  const blob = base64ToBlob(videoData);
+                  const blob = base64ToBlob(finalSpotObj.base64data, finalSpotObj.mtype);
 
                   const mPromise = fetch(mobURL, {
                     method: "PUT",
@@ -893,7 +888,7 @@ export default defineBackground(() => {
                   const vPromise = fetch(videoURL, {
                     method: "PUT",
                     headers: {
-                      "Content-Type": "video/mp4",
+                      "Content-Type": "video/webm",
                     },
                     body: blob,
                   });
@@ -927,8 +922,6 @@ export default defineBackground(() => {
               });
             });
         });
-      }
-
       return "pong";
     }
   });
@@ -1033,17 +1026,6 @@ export default defineBackground(() => {
     }
   }
 
-  function base64ToBlob(base64: string, mimeType = "video/mp4") {
-    const binaryString = atob(base64.split(",")[1]);
-    const byteNumbers = new Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      byteNumbers[i] = binaryString.charCodeAt(i);
-    }
-
-    const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: mimeType });
-  }
-
   async function startRecording(
     area: "tab" | "desktop",
     microphone: boolean,
@@ -1129,7 +1111,9 @@ export default defineBackground(() => {
                 activeTabId: null,
               };
               console.log(tabId, 'activation for new')
-              attachDebuggerToTab(tabId)
+              if (settings.useDebugger && settings.networkLogs) {
+                attachDebuggerToTab(tabId)
+              }
               void sendToActiveTab(msg);
             });
           if (previousTab) {
@@ -1193,7 +1177,6 @@ export default defineBackground(() => {
             type: "offscr:stop-discard",
             target: "offscreen",
           });
-          finalVideoBase64 = "";
           finalReady = false;
           finalSpotObj = defaultSpotObj;
           recordingState = {

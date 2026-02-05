@@ -35,7 +35,7 @@ function FooterContent({ dashboardId, selected }: any) {
   };
 
   return (
-    <div className="flex items-center rounded border bg-gray-light-shade justify-between p-3">
+    <div className="flex items-center rounded-sm border bg-gray-light-shade justify-between p-3">
       <div>
         {t('Selected')}&nbsp;
         <span className="font-medium">{selected.length}</span>&nbsp;{t('of')}
@@ -43,7 +43,7 @@ function FooterContent({ dashboardId, selected }: any) {
         <span className="font-medium">{total}</span>
       </div>
       <div className="flex items-center">
-        <Button type="text" className="mr-2" onClick={hideModal}>
+        <Button type="text" className="mr-2!" onClick={hideModal}>
           {t('Cancel')}
         </Button>
         <Button

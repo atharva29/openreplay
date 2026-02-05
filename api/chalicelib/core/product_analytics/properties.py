@@ -218,22 +218,24 @@ def get_all_properties(project_id: int, include_all: bool = False) -> dict:
             f"""\
             SELECT COUNT(1) OVER () AS total,
                  property_name AS name,
-                 display_name,
+                 apc.display_name,
                  event_properties.auto_captured_property AS auto_captured,
                  possible_types
             FROM product_analytics.all_properties
-            LEFT ANY JOIN (
-                SELECT property_name,
-                       auto_captured_property,
-                       array_agg(DISTINCT event_properties.value_type) AS possible_types
-                FROM product_analytics.event_properties
-                WHERE event_properties.project_id = %(project_id)s
-                GROUP BY ALL
-            ) AS event_properties USING (property_name)
+                LEFT JOIN product_analytics.all_properties_customized AS apc 
+                    USING (project_id, source, property_name, auto_captured)
+                LEFT ANY JOIN (
+                    SELECT property_name,
+                           auto_captured_property,
+                           array_agg(DISTINCT event_properties.value_type) AS possible_types
+                    FROM product_analytics.event_properties
+                    WHERE event_properties.project_id = %(project_id)s
+                    GROUP BY ALL
+                ) AS event_properties USING (property_name)
             WHERE project_id = %(project_id)s
-                {"" if include_all else "AND status = 'visible'"}
+                {"" if include_all else "AND (apc.status = 'visible' OR isNull(apc.status))"}
             GROUP BY ALL
-            ORDER BY display_name, property_name;""",
+            ORDER BY apc.display_name, all_properties.property_name;""",
             parameters={"project_id": project_id},
         )
         properties = ch_client.execute(r)
@@ -259,6 +261,8 @@ def get_all_properties(project_id: int, include_all: bool = False) -> dict:
                 p["dataType"] = exp_ch_helper.simplify_clickhouse_type(
                     PREDEFINED_PROPERTIES[snake_case_name]["type"]
                 )
+                if p["autoCaptured"] and (p["displayName"] is None or p["displayName"] == ''):
+                    p["displayName"] = PREDEFINED_PROPERTIES[snake_case_name]["displayName"]
             else:
                 p["_foundInPredefinedList"] = False
                 p["dataType"] = next(iter(p["possibleTypes"]), "string")
@@ -291,7 +295,7 @@ def get_all_properties(project_id: int, include_all: bool = False) -> dict:
         }
 
 
-@cached(TTLCache(maxsize=1000, ttl=180))
+# @cached(TTLCache(maxsize=1000, ttl=180))
 def get_event_properties(project_id: int, event_name: str, auto_captured: bool):
     if auto_captured and event_name == "TAG_TRIGGER":
         return [
@@ -313,17 +317,20 @@ def get_event_properties(project_id: int, event_name: str, auto_captured: bool):
         ]
     with ClickHouseClient() as ch_client:
         r = ch_client.format(
-            """SELECT all_properties.property_name                    AS name,
-                      all_properties.display_name,
+            """SELECT event_properties.property_name                  AS name,
+                      all_properties_customized.display_name,
                       event_properties.auto_captured_property         AS auto_captured,
                       array_agg(DISTINCT event_properties.value_type) AS possible_types
                FROM product_analytics.event_properties
-                        INNER JOIN product_analytics.all_properties USING (property_name)
+                        LEFT JOIN product_analytics.all_properties_customized USING (property_name)
                WHERE event_properties.project_id = %(project_id)s
-                 AND all_properties.project_id = %(project_id)s
                  AND event_properties.event_name = %(event_name)s
                  AND event_properties.auto_captured_property = %(auto_captured)s
-                 AND all_properties.status = 'visible'
+                 AND (all_properties_customized.project_id = 0
+                          AND or_property_visibility(property_name) = 'visible'
+                          AND event_properties.auto_captured_property
+                   OR (all_properties_customized.project_id = %(project_id)s
+                       AND all_properties_customized.status = 'visible'))
                GROUP BY ALL
                ORDER BY 1;""",
             parameters={
@@ -354,6 +361,8 @@ def get_event_properties(project_id: int, event_name: str, auto_captured: bool):
                 p["possibleValues"] = PREDEFINED_PROPERTIES[snake_case_name][
                     "possibleValues"
                 ]
+                if p["autoCaptured"] and (p["displayName"] is None or p["displayName"] == ''):
+                    p["displayName"] = PREDEFINED_PROPERTIES[snake_case_name]["displayName"]
             p["possibleTypes"] = list(
                 set(exp_ch_helper.simplify_clickhouse_types(p["possibleTypes"]))
             )
@@ -382,26 +391,26 @@ def get_event_properties(project_id: int, event_name: str, auto_captured: bool):
 def get_lexicon(project_id: int, page: schemas.PaginatedSchema):
     with ClickHouseClient() as ch_client:
         r = ch_client.format(
-            """SELECT COUNT(1)                  OVER ()       AS total, all_properties.property_name AS name,
-                      all_properties.*,
-                      possible_types.values  AS possible_types,
-                      possible_values.values AS sample_values
-               FROM product_analytics.all_properties
-                        LEFT JOIN (SELECT project_id, property_name, array_agg(DISTINCT value_type) AS
-                                   values
-                                   FROM product_analytics.event_properties
-                                   WHERE project_id=%(project_id)s
-                                   GROUP BY 1, 2) AS possible_types
-                                  USING (project_id, property_name)
-                        LEFT JOIN (SELECT project_id, property_name, array_agg(DISTINCT value) AS
-                                   values
-                                   FROM product_analytics.property_values_samples
-                                   WHERE project_id=%(project_id)s
-                                   GROUP BY 1, 2) AS possible_values USING (project_id, property_name)
-               WHERE project_id = %(project_id)s
-               ORDER BY display_name
-                   LIMIT %(limit)s
-               OFFSET %(offset)s;""",
+            """ \
+            SELECT COUNT(1)                     OVER () AS total, all_properties.property_name AS name,
+                   all_properties.*,
+                   possible_types.values     AS possible_types,
+                   sumMerge(aepg.data_count) AS row_count
+            FROM product_analytics.all_properties
+                     LEFT JOIN (SELECT project_id, property_name, array_agg(DISTINCT value_type) AS
+                                values
+                                FROM product_analytics.event_properties
+                                WHERE project_id=%(project_id)s
+                                GROUP BY 1, 2) AS possible_types
+                               USING (project_id, property_name)
+                     LEFT JOIN product_analytics.autocomplete_event_properties_grouped AS aepg
+                               ON (all_properties.property_name = aepg.property_name)
+            WHERE all_properties.project_id = %(project_id)s
+              AND (aepg.project_id = 0 OR aepg.project_id = %(project_id)s)
+            GROUP BY ALL
+            ORDER BY display_name
+                LIMIT %(limit)s
+            OFFSET %(offset)s;""",
             parameters={
                 "project_id": project_id,
                 "limit": page.limit,

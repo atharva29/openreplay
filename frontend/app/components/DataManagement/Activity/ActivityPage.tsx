@@ -56,8 +56,9 @@ function ActivityPage() {
       title: 'Event Name',
       dataIndex: 'event_name',
       key: 'event_name',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
       render: (_: string, row) => (
         <div
           className={'flex items-center gap-2 code-font fill-black color-black'}
@@ -71,16 +72,18 @@ function ActivityPage() {
       title: 'Time',
       dataIndex: 'created_at',
       key: 'created_at',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
       render: (text) => formatTimeOrDate(text, timezone),
     },
     {
       title: 'Distinct ID',
       dataIndex: 'distinct_id',
       key: 'distinct_id',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
       render: (text: string, r) => {
         const clickable = r.user_id;
         if (clickable) {
@@ -108,15 +111,17 @@ function ActivityPage() {
       title: 'City',
       dataIndex: 'city',
       key: 'city',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
     },
     {
       title: 'Environment',
       dataIndex: 'environment',
       key: 'environment',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
     },
     {
       title: (
@@ -290,6 +295,7 @@ function ActivityPage() {
       });
     }
   };
+
   return (
     <div
       className={'flex flex-col gap-2'}
@@ -304,8 +310,9 @@ function ActivityPage() {
         >
           Clear
         </Button>
+        <Button onClick={testPushItems} type="default" size="small">debug</Button>
       </div>
-      <div className={'shadow rounded-lg bg-white p-4 border'}>
+      <div className={'shadow-sm rounded-lg bg-white p-4 border'}>
         <FilterListHeader
           title="Events"
           orderProps={appliedFilter}
@@ -337,7 +344,7 @@ function ActivityPage() {
           scope={'events'}
         />
 
-        <Divider className="my-3" />
+        <Divider className="my-3!" />
 
         <FilterListHeader
           title="Filters"
@@ -381,7 +388,7 @@ function ActivityPage() {
 
         <div
           className={
-            'bg-white rounded-lg shadow border flex flex-col overflow-hidden'
+            'bg-white rounded-lg shadow-sm border flex flex-col overflow-hidden'
           }
         >
           <div className={'px-4 py-2 flex items-center gap-2'}>

@@ -69,6 +69,62 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
+      {{- if .Values.offlineMigration.enabled }}
+      # Offline migration: copy schema files from pre-built migration image
+      - name: migration
+        image: "{{ .Values.offlineMigration.image.registry }}/{{ .Values.offlineMigration.image.repository }}:{{ .Values.offlineMigration.image.tag | default .Chart.AppVersion }}"
+        env:
+          - name: ENTERPRISE_EDITION_LICENSE
+            value: "{{ .Values.global.enterpriseEditionLicense }}"
+          - name: PG_HOST
+            value: "{{ .Values.global.postgresql.postgresqlHost }}"
+          - name: PG_PORT
+            value: "{{ .Values.global.postgresql.postgresqlPort }}"
+          - name: CH_HOST
+            value: "{{ .Values.global.clickhouse.chHost }}"
+          - name: CH_PORT
+            value: "{{ .Values.global.clickhouse.service.webPort }}"
+        command:
+          - /bin/bash
+          - -c
+        args:
+          - |
+            set -x
+            echo "[info] Offline migration: copying schema files from migration image"
+            mkdir -p /opt/openreplay/openreplay
+            cp -rf /work/scripts /opt/openreplay/openreplay/
+            if [ -n "$ENTERPRISE_EDITION_LICENSE" ]; then
+              echo "[info] Copying enterprise schema files"
+              cp -rf /work/ee /opt/openreplay/openreplay/
+            fi
+            echo "[info] Schema files copied successfully"
+            ls -la /opt/openreplay/openreplay/scripts/
+
+            # Wait for PostgreSQL
+            exit_count=0
+            while [ $exit_count -le 20 ]; do
+              nc -zv ${PG_HOST} ${PG_PORT} -w 1 && break
+              echo "[info] PostgreSQL is not up; retrying in 5 seconds"
+              sleep 4
+              exit_count=$((exit_count+1))
+            done
+            [ $exit_count -gt 20 ] && { echo "[error] PostgreSQL is not running"; exit 100; }
+
+            # Wait for ClickHouse
+            exit_count=0
+            while [ $exit_count -le 20 ]; do
+              nc -zv ${CH_HOST} ${CH_PORT} -w 1 && break
+              echo "[info] ClickHouse is not up; retrying in 5 seconds"
+              sleep 4
+              exit_count=$((exit_count+1))
+            done
+            [ $exit_count -gt 20 ] && { echo "[error] ClickHouse is not running"; exit 100; }
+
+            echo "[info] All databases are available"
+        volumeMounts:
+        - name: shared
+          mountPath: /opt/openreplay
+      {{- end }}
       - name: git
         image: alpine/git
         env:
@@ -90,31 +146,69 @@ spec:
             set -x
             mkdir -p /opt/openreplay/openreplay && cd /opt/openreplay/openreplay
 
-            # Function to check if GitHub is available
-            check_github() {
-              for i in {1..10}; do
-                if ping -c 1 github.com &> /dev/null || wget -q --spider https://github.com; then
-                  echo "GitHub is available."
-                  break
-                else
-                  echo "GitHub is not available. Retrying in 3 seconds..."
-                  sleep 3
-                fi
-              done
-            }
+            # Check if offline migration scripts are already available (from migration image or mounted)
+            # ## Usage:
+            # Option 1: Enable offlineMigration.enabled=true to use pre-built migration image
+            # Option 2: Mount your scripts directory to `/mnt/efs` with the following structure:
+            # ```
+            # /mnt/efs/
+            # ├── scripts/
+            # │   ├── schema/
+            # │   └── helmcharts/
+            # └── ee/           # Optional: for enterprise edition
+            #     └── scripts/
+            # ```
+            #
+            # The job will automatically detect and use these pre-mounted scripts instead of cloning from GitHub.
 
-            check_github
+            # Check if migration init container already provided files
+            if [ -d "/opt/openreplay/openreplay/scripts/schema" ]; then
+              echo "[info] Offline migration detected. Schema files already available (from migration image)"
+            elif [ -d "/mnt/efs/scripts/schema" ] && [ -d "/mnt/efs/scripts/helmcharts" ]; then
+              echo "[info] Offline migration detected. Using pre-mounted scripts from /mnt/efs"
+              cp -rf /mnt/efs/scripts /opt/openreplay/openreplay/
+              if [ "x$ENTERPRISE_EDITION_LICENSE" != "x" ] && [ -d "/mnt/efs/ee/scripts" ]; then
+                echo "[info] Copying enterprise scripts from /mnt/efs"
+                mkdir -p /opt/openreplay/openreplay/ee
+                cp -rf /mnt/efs/ee /opt/openreplay/openreplay/
+              fi
+              echo "[info] Offline migration scripts copied successfully"
+              # Else for an upgrade, it won't pull the latest change. 
+              # If you want offline, you can copy it prior, and do the update.
+              rm -rf /mnt/efs/scripts
+              echo "[info] Offline migration scripts deleted from shared successfully"
+            else
+              echo "[info] No offline scripts found. Proceeding with online migration from GitHub"
+              
+              # Function to check if GitHub is available
+              check_github() {
+                for i in {1..10}; do
+                  if ping -c 1 github.com &> /dev/null || wget -q --spider https://github.com; then
+                    echo "GitHub is available."
+                    break
+                  else
+                    echo "GitHub is not available. Retrying in 3 seconds..."
+                    sleep 3
+                  fi
+                done
+              }
 
-            # Modern sparse checkout using Git 2.25+ features with cone mode
-            # Only fetch required directories: scripts/schema, scripts/helmcharts, ee/scripts
-            git clone --depth 1 --filter=blob:none --sparse \
-              {{ .Values.global.dbMigrationUpstreamRepoURL | default "https://github.com/openreplay/openreplay" }} \
-              -b {{ default .Chart.AppVersion .Values.dbMigrationUpstreamBranch }} . || exit 10
-            git sparse-checkout set scripts/schema scripts/helmcharts ee/scripts || exit 10
-            
-            ls /opt/openreplay/openreplay
-            git log -1
+              check_github
+
+              # Modern sparse checkout using Git 2.25+ features with cone mode
+              # Only fetch required directories: scripts/schema, scripts/helmcharts, ee/scripts
+              git clone --depth 1 --filter=blob:none --sparse \
+                {{ .Values.global.dbMigrationUpstreamRepoURL | default "https://github.com/openreplay/openreplay" }} \
+                -b {{ default .Chart.AppVersion .Values.dbMigrationUpstreamBranch }} . || exit 10
+              git sparse-checkout set scripts/schema scripts/helmcharts ee/scripts || exit 10
+              
+              ls /opt/openreplay/openreplay
+              git log -1
+            fi
+
             {{ .Values.global.dbMigrationPreCommand | default "" }}
+
+            exit_count=0
 
             exit_count=0
             error_connection=1
@@ -142,7 +236,7 @@ spec:
             error_connection=1
 
             while [ $exit_count -le 20 ];do
-              nc -zv {{.Values.global.clickhouse.chHost}} 9000 -w 1
+              nc -zv {{.Values.global.clickhouse.chHost}} {{.Values.global.clickhouse.service.webPort}} -w 1
               if [ $? -ne 0 ]; then
                 echo "[info] clickhouse is not up; retrying in 5 seconds"
                 sleep 4
@@ -177,6 +271,8 @@ spec:
             value: "{{ .Values.global.postgresql.postgresqlHost }}"
           - name: PGPORT
             value: "{{ .Values.global.postgresql.postgresqlPort }}"
+          - name: PGDATABASE
+            value: "{{ .Values.global.postgresql.postgresqlDatabase }}"
           - name: PGUSER
             value: "{{ .Values.global.postgresql.postgresqlUser }}"
           - name: PGPASSWORD
@@ -188,7 +284,7 @@ spec:
         args:
           - |
             lowVersion=16.4
-            highVersion=17
+            highVersion=18
             pg_version=`psql -c "SHOW server_version;" -t | tr -d ' '`
             echo $pg_version |\
               awk -v pg_version=$pg_version -v low="$lowVersion" -v high="$highVersion" -F. '{

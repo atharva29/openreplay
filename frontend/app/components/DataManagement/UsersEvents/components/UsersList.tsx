@@ -1,7 +1,8 @@
 import React from 'react';
 import { Table, Dropdown, Button } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
-import { Filter } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import FilterListHeader from 'Shared/Filters/FilterList/FilterListHeader';
 import FilterSelection from 'Shared/Filters/FilterSelection';
 import UnifiedFilterList from 'Shared/Filters/FilterList/UnifiedFilterList';
 import { useStore } from 'App/mstore';
@@ -17,9 +18,11 @@ import withPageTitle from '@/components/hocs/withPageTitle';
 function UsersList({
   toUser,
   query,
+  propName,
 }: {
   toUser: (id: string) => void;
   query: string;
+  propName?: string;
 }) {
   const { analyticsStore, filterStore } = useStore();
   const [editCols, setEditCols] = React.useState(false);
@@ -37,11 +40,12 @@ function UsersList({
   );
 
   React.useEffect(() => {
-    analyticsStore.fetchUsers(query);
+    analyticsStore.fetchUsers(query, propName);
   }, [
     analyticsStore.usersPayloadFilters,
     analyticsStore.usersPayloadFilters.filters,
     query,
+    propName,
   ]);
 
   const dropdownItems = [
@@ -78,8 +82,8 @@ function UsersList({
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
       render: (_: any, record: any) => {
         return (
           <div className="flex items-center gap-2">
@@ -101,8 +105,8 @@ function UsersList({
       title: 'User ID',
       dataIndex: 'userId',
       key: 'userId',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
       render: (_: any, record: any) => (
         <div className={'link'}>{record.userId ? record.userId : 'N/A'}</div>
       ),
@@ -111,8 +115,8 @@ function UsersList({
       title: 'Location',
       dataIndex: 'userLocation',
       key: 'userLocation',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
       render: (_: any, record: any) => (
         <div className={'flex items-center gap-2'}>
           <CountryFlag
@@ -128,16 +132,16 @@ function UsersList({
       title: 'Last Seen',
       dataIndex: 'lastSeen',
       key: 'lastSeen',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
       render: (_: any, record: any) => diffIfRecent(record.createdAt),
     },
     {
       title: 'Created',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      showSorterTooltip: { target: 'full-header' },
       sorter: true,
+      showSorterTooltip: false,
       render: (_: any, record: any) => diffIfRecent(record.createdAt),
     },
     {
@@ -189,7 +193,7 @@ function UsersList({
   };
   return (
     <div className="flex flex-col">
-      <div className="flex flex-col gap-2 px-4 py-2">
+      <div className="flex flex-col px-4 py-2">
         {/* 1.23 -- <span>Show by</span>*/}
         {/*<Segmented*/}
         {/*  size={'small'}*/}
@@ -198,22 +202,23 @@ function UsersList({
         {/*    { label: 'Company', value: 'company' },*/}
         {/*  ]}*/}
         {/*/>*/}
-        <div>
-          <FilterSelection
-            filters={allFilterOptions}
-            activeFilters={activeFilters}
-            onFilterClick={onAddFilter}
-          >
-            <Button
-              icon={<Filter size={16} strokeWidth={1} />}
-              type="default"
-              size={'small'}
-              className="btn-add-filter"
+        <FilterListHeader
+          title="Filters"
+          filterSelection={
+            <FilterSelection
+              filters={allFilterOptions}
+              activeFilters={activeFilters}
+              onFilterClick={onAddFilter}
             >
-              Filters
-            </Button>
-          </FilterSelection>
-        </div>
+              <Button type="default" size="small">
+                <div className="flex items-center gap-1">
+                  <Plus size={16} strokeWidth={1} />
+                  <span>Add</span>
+                </div>
+              </Button>
+            </FilterSelection>
+          }
+        />
         <UnifiedFilterList
           title="Filters"
           filters={analyticsStore.usersPayloadFilters.filters}

@@ -1,16 +1,5 @@
-CREATE OR REPLACE FUNCTION openreplay_version AS() -> 'v1.24.0-ee';
+CREATE OR REPLACE FUNCTION openreplay_version AS() -> 'v1.25.0-ee';
 CREATE DATABASE IF NOT EXISTS experimental;
-
-CREATE TABLE IF NOT EXISTS experimental.autocomplete
-(
-    project_id UInt16,
-    type       LowCardinality(String),
-    value      String,
-    _timestamp DateTime DEFAULT now()
-) ENGINE = ReplacingMergeTree(_timestamp)
-      PARTITION BY toYYYYMM(_timestamp)
-      ORDER BY (project_id, type, value);
-
 
 CREATE TABLE IF NOT EXISTS experimental.sessions
 (
@@ -55,6 +44,7 @@ CREATE TABLE IF NOT EXISTS experimental.sessions
     metadata_8           Nullable(String),
     metadata_9           Nullable(String),
     metadata_10          Nullable(String),
+    is_vault             BOOL                      DEFAULT FALSE,
     _timestamp           DateTime                  DEFAULT now()
 ) ENGINE = ReplacingMergeTree(_timestamp)
       PARTITION BY toYYYYMMDD(datetime)
@@ -105,62 +95,6 @@ CREATE TABLE IF NOT EXISTS experimental.issues
       PARTITION BY toYYYYMM(_timestamp)
       ORDER BY (project_id, issue_id, type);
 
-
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS experimental.sessions_l7d_mv
-            ENGINE = ReplacingMergeTree(_timestamp)
-                PARTITION BY toYYYYMMDD(datetime)
-                ORDER BY (project_id, datetime, session_id)
-                TTL datetime + INTERVAL 7 DAY
-                SETTINGS index_granularity = 512
-            POPULATE
-AS
-SELECT session_id,
-       project_id,
-       tracker_version,
-       rev_id,
-       user_uuid,
-       user_os,
-       user_os_version,
-       user_browser,
-       user_browser_version,
-       user_device,
-       user_device_type,
-       user_country,
-       user_city,
-       user_state,
-       platform,
-       datetime,
-       timezone,
-       duration,
-       pages_count,
-       events_count,
-       errors_count,
-       utm_source,
-       utm_medium,
-       utm_campaign,
-       user_id,
-       user_anonymous_id,
-       issue_types,
-       referrer,
-       base_referrer,
-       screen_width,
-       screen_height,
-       metadata_1,
-       metadata_2,
-       metadata_3,
-       metadata_4,
-       metadata_5,
-       metadata_6,
-       metadata_7,
-       metadata_8,
-       metadata_9,
-       metadata_10,
-       _timestamp
-FROM experimental.sessions
-WHERE datetime >= now() - INTERVAL 7 DAY
-  AND isNotNull(duration)
-  AND duration > 0;
 
 -- CREATE MATERIALIZED VIEW IF NOT EXISTS experimental.js_errors_sessions_mv
 --             ENGINE = ReplacingMergeTree(_timestamp)
@@ -293,7 +227,6 @@ CREATE TABLE IF NOT EXISTS product_analytics.users
 ) ENGINE = ReplacingMergeTree(_timestamp, _is_deleted)
       ORDER BY (project_id, "$user_id")
       PARTITION BY toYYYYMM(_timestamp)
-      ORDER BY (project_id, "$user_id")
       TTL _deleted_at + INTERVAL 1 DAY DELETE WHERE _deleted_at != '1970-01-01 00:00:00'
       SETTINGS allow_experimental_json_type = 1, enable_json_type = 1;
 
@@ -344,7 +277,8 @@ CREATE TABLE IF NOT EXISTS product_analytics.users_distinct_id
     _timestamp  DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(_timestamp, _is_deleted)
       ORDER BY (project_id, distinct_id)
-      TTL _deleted_at;
+      PARTITION BY toMonday(_timestamp)
+      TTL _deleted_at WHERE _deleted_at != '1970-01-01 00:00:00';
 
 
 CREATE TABLE IF NOT EXISTS product_analytics.events
@@ -400,13 +334,14 @@ CREATE TABLE IF NOT EXISTS product_analytics.events
     issue_id                    String DEFAULT '',
     error_id                    String DEFAULT '',
     -- Created by the backend
+    is_vault                    BOOL DEFAULT FALSE,
     "$tags"                     Array(String) DEFAULT [] COMMENT 'tags are used to filter events',
     "$import"                   BOOL DEFAULT FALSE,
     _deleted_at                 DateTime DEFAULT '1970-01-01 00:00:00',
     _timestamp                  DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(_timestamp)
       ORDER BY (project_id, "$event_name", created_at, session_id)
-      TTL _deleted_at + INTERVAL 1 DAY DELETE WHERE _deleted_at != '1970-01-01 00:00:00'
+      TTL _deleted_at + INTERVAL 1 DAY DELETE WHERE _deleted_at != '1970-01-01 00:00:00' AND NOT is_vault
       SETTINGS allow_experimental_json_type = 1, enable_json_type = 1;
 
 -- The list of events that should not be ingested,
@@ -572,15 +507,28 @@ CREATE TABLE IF NOT EXISTS product_analytics.all_events
     project_id          UInt16,
     auto_captured       BOOL     DEFAULT FALSE,
     event_name          String,
-    display_name        String   DEFAULT '',
-    description         String   DEFAULT '',
     event_count_l30days UInt32   DEFAULT 0,
     query_count_l30days UInt32   DEFAULT 0,
 
     created_at          DateTime64,
-    _edited_by_user     BOOL     DEFAULT FALSE,
     _timestamp          DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(_timestamp)
+      ORDER BY (project_id, auto_captured, event_name);
+
+CREATE TABLE IF NOT EXISTS product_analytics.all_events_customized
+(
+    project_id    UInt16,
+    auto_captured BOOL                   DEFAULT FALSE,
+    event_name    String,
+    display_name  String                 DEFAULT '',
+    description   String                 DEFAULT '',
+    status        LowCardinality(String) DEFAULT 'visible' COMMENT 'visible/hidden/dropped',
+
+    created_at    DateTime64,
+    _deleted_at   Nullable(DateTime64),
+    _is_deleted   BOOL                   DEFAULT FALSE,
+    _timestamp    DateTime               DEFAULT now()
+) ENGINE = ReplacingMergeTree(_timestamp, _is_deleted)
       ORDER BY (project_id, auto_captured, event_name);
 
 CREATE OR REPLACE FUNCTION or_event_display_name AS(event_name)->multiIf(
@@ -608,20 +556,6 @@ CREATE OR REPLACE FUNCTION or_event_description AS(event_name)->multiIf(
         'Represents HTTP/HTTPS network activity from the application. Tracked automatically with property $auto_captured set to TRUE and $event_name set to "fetch".\n\nContains URL, method, status code, duration, and timestamp',
         ''
                                                                 );
--- ----------------- This is experimental, if it doesn't work, we need to do it in db worker -------------
--- Incremental materialized view to fill all_events using $properties
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.all_events_extractor_mv
-    TO product_analytics.all_events AS
-SELECT project_id,
-       `$auto_captured`                     AS auto_captured,
-       `$event_name`                        AS event_name,
-       created_at                           AS created_at,
-       or_event_display_name(`$event_name`) AS display_name,
-       or_event_description(`$event_name`)  AS description,
-       FALSE                                AS _edited_by_user
-FROM product_analytics.events
-GROUP BY ALL;
--- -------- END ---------
 
 -- The full list of event-properties (used to tell which property belongs to which event)
 -- Experimental: This table is filled by an incremental materialized view
@@ -639,35 +573,6 @@ CREATE TABLE IF NOT EXISTS product_analytics.event_properties
 ) ENGINE = ReplacingMergeTree(_timestamp)
       ORDER BY (project_id, event_name, property_name, value_type, auto_captured_event, auto_captured_property);
 
--- ----------------- This is experimental, if it doesn't work, we need to do it in db worker -------------
--- Incremental materialized view to fill event_properties using $properties & properties
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.event_dproperties_extractor_mv
-    TO product_analytics.event_properties AS
-SELECT project_id,
-       `$event_name`    AS event_name,
-       a.1              AS property_name,
-       a.2              AS value_type,
-       `$auto_captured` AS auto_captured_event,
-       TRUE             AS auto_captured_property,
-       created_at
-FROM product_analytics.events
-         ARRAY JOIN JSONAllPathsWithTypes(`$properties`) AS a
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.event_properties_extractor_mv
-    TO product_analytics.event_properties AS
-SELECT project_id,
-       `$event_name`    AS event_name,
-       a.1              AS property_name,
-       a.2              AS value_type,
-       `$auto_captured` AS auto_captured_event,
-       FALSE            AS auto_captured_property,
-       created_at
-FROM product_analytics.events
-         ARRAY JOIN JSONAllPathsWithTypes(`properties`) AS a
-GROUP BY ALL;
--- -------- END ---------
-
 
 -- The full list of properties (events and users)
 -- Experimental: This table is filled by an incremental materialized view
@@ -678,18 +583,31 @@ CREATE TABLE IF NOT EXISTS product_analytics.all_properties
     property_name     String,
     is_event_property BOOL,
     auto_captured     BOOL,
-    display_name      String                 DEFAULT '',
-    description       String                 DEFAULT '',
-    status            LowCardinality(String) DEFAULT 'visible' COMMENT 'visible/hidden/dropped',
-    data_count        UInt32                 DEFAULT 1,
-    query_count       UInt32                 DEFAULT 0,
+    data_count        UInt32   DEFAULT 1,
+    query_count       UInt32   DEFAULT 0,
 
     created_at        DateTime64,
-    _edited_by_user   BOOL                   DEFAULT FALSE,
-    _timestamp        DateTime               DEFAULT now()
+    _timestamp        DateTime DEFAULT now()
 ) ENGINE = ReplacingMergeTree(_timestamp)
       PARTITION BY toYYYYMM(_timestamp)
       ORDER BY (project_id, source, property_name, is_event_property, auto_captured);
+
+CREATE TABLE IF NOT EXISTS product_analytics.all_properties_customized
+(
+    project_id    UInt16,
+    source        Enum8('sessions'=0,'users'=1,'events'=2),
+    property_name String,
+    auto_captured BOOL,
+    display_name  String                 DEFAULT '',
+    description   String                 DEFAULT '',
+    status        LowCardinality(String) DEFAULT 'visible' COMMENT 'visible/hidden/dropped',
+
+    created_at    DateTime64,
+    _deleted_at   Nullable(DateTime64),
+    _is_deleted   BOOL                   DEFAULT FALSE,
+    _timestamp    DateTime               DEFAULT now()
+) ENGINE = ReplacingMergeTree(_timestamp, _is_deleted)
+      ORDER BY (project_id, source, property_name, auto_captured);
 
 CREATE OR REPLACE FUNCTION or_property_display_name AS(property_name)->multiIf(
         property_name == 'label', 'Label',
@@ -790,25 +708,6 @@ CREATE OR REPLACE FUNCTION or_property_visibility AS(property_name)->multiIf(
         property_name = 'userAnonymousId', 'hidden',
         property_name = 'user_device', 'hidden',
         'visible');
--- ----------------- This is experimental, if it doesn't work, we need to do it in db worker -------------
--- Incremental materialized view to fill all_properties
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.events_all_properties_extractor_mv
-    TO product_analytics.all_properties AS
-SELECT project_id,
-       'events'                                AS source,
-       property_name,
-       TRUE                                    AS is_event_property,
-       auto_captured_property                  AS auto_captured,
---        Think about display name if autocaptured and not autocaptured
-       or_property_display_name(property_name) AS display_name,
-       ''                                      AS description,
-       or_property_visibility(property_name)   AS status,
-       0                                       AS data_count,
-       0                                       AS query_count,
-       event_properties.created_at             AS created_at,
-       FALSE                                   AS _edited_by_user
-FROM product_analytics.event_properties;
--- -------- END ---------
 
 -- Autocomplete
 
@@ -817,20 +716,11 @@ CREATE TABLE IF NOT EXISTS product_analytics.autocomplete_events_grouped
     project_id UInt16,
     value      String COMMENT 'The $event_name',
     data_count AggregateFunction(sum, UInt16) COMMENT 'The number of appearance during the past month',
-    _timestamp DateTime
+    _timestamp DateTime DEFAULT now()
 ) ENGINE = AggregatingMergeTree()
       ORDER BY (project_id, value)
       PARTITION BY toYYYYMM(_timestamp)
       TTL _timestamp + INTERVAL 1 MONTH;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_events_grouped_mv
-    TO product_analytics.autocomplete_events_grouped AS
-SELECT project_id,
-       `$event_name`         AS value,
-       sumState(toUInt16(1)) AS data_count
-FROM product_analytics.events
-WHERE value != ''
-GROUP BY ALL;
 
 
 CREATE TABLE IF NOT EXISTS product_analytics.autocomplete_event_properties_grouped
@@ -845,32 +735,6 @@ CREATE TABLE IF NOT EXISTS product_analytics.autocomplete_event_properties_group
       ORDER BY (project_id, event_name, property_name, value)
       PARTITION BY toYYYYMM(_timestamp)
       TTL _timestamp + INTERVAL 1 MONTH;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_event_properties_grouped_mv
-    TO product_analytics.autocomplete_event_properties_grouped AS
-SELECT project_id,
-       `$event_name`         AS event_name,
-       a.1                   AS property_name,
-       a.2                   AS value,
-       sumState(toUInt16(1)) AS data_count
-FROM product_analytics.events
-         ARRAY JOIN JSONExtractKeysAndValues(toString(`properties`), 'String') AS a
-WHERE length(a.1) > 0
-  AND isNull(toFloat64OrNull(a.1))
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_event_dproperties_grouped_mv
-    TO product_analytics.autocomplete_event_properties_grouped AS
-SELECT project_id,
-       `$event_name`         AS event_name,
-       a.1                   AS property_name,
-       a.2                   AS value,
-       sumState(toUInt16(1)) AS data_count
-FROM product_analytics.events
-         ARRAY JOIN JSONExtractKeysAndValues(toString(`$properties`), 'String') AS a
-WHERE length(a.1) > 0
-  AND isNull(toFloat64OrNull(a.1))
-GROUP BY ALL;
 
 
 CREATE TABLE IF NOT EXISTS experimental.parsed_errors
@@ -899,329 +763,6 @@ CREATE TABLE IF NOT EXISTS product_analytics.autocomplete_simple
       PARTITION BY toYYYYMM(_timestamp)
       TTL _timestamp + INTERVAL 1 MONTH;
 
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_browser_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                   AS auto_captured,
-       'sessions'             AS source,
-       'user_browser'         AS name,
-       toString(user_browser) AS value,
-       sumState(toUInt16(1))  AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_browser)
-  AND notEmpty(user_browser)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_browser_version_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                           AS auto_captured,
-       'sessions'                     AS source,
-       'user_browser_version'         AS name,
-       toString(user_browser_version) AS value,
-       sumState(toUInt16(1))          AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_browser_version)
-  AND notEmpty(user_browser_version)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_country_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                   AS auto_captured,
-       'sessions'             AS source,
-       'user_country'         AS name,
-       toString(user_country) AS value,
-       sumState(toUInt16(1))  AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_country)
-  AND notEmpty(toString(user_country))
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_state_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'user_state'          AS name,
-       toString(user_state)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_state)
-  AND notEmpty(user_state)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_city_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'user_city'           AS name,
-       toString(user_city)   AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_city)
-  AND notEmpty(user_city)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_device_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'user_device'         AS name,
-       toString(user_device) AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_device)
-  AND notEmpty(user_device)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_rev_id_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'rev_id'              AS name,
-       toString(rev_id)      AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(rev_id)
-  AND notEmpty(rev_id)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_referrer_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'referrer'            AS name,
-       toString(referrer)    AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(referrer)
-  AND notEmpty(referrer)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_utm_source_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'utm_source'          AS name,
-       toString(utm_source)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(utm_source)
-  AND notEmpty(utm_source)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_utm_medium_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                  AS auto_captured,
-       'sessions'            AS source,
-       'utm_medium'          AS name,
-       toString(utm_medium)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(utm_medium)
-  AND notEmpty(utm_medium)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_utm_campaign_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       TRUE                   AS auto_captured,
-       'sessions'             AS source,
-       'utm_campaign'         AS name,
-       toString(utm_campaign) AS value,
-       sumState(toUInt16(1))  AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(utm_campaign)
-  AND notEmpty(utm_campaign)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_id_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'user_id'             AS name,
-       toString(user_id)     AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_id)
-  AND notEmpty(user_id)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_user_anonymous_id_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                       AS auto_captured,
-       'sessions'                  AS source,
-       'user_anonymous_id'         AS name,
-       toString(user_anonymous_id) AS value,
-       sumState(toUInt16(1))       AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(user_anonymous_id)
-  AND notEmpty(user_anonymous_id)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_1_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_1'          AS name,
-       toString(metadata_1)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_1)
-  AND notEmpty(metadata_1)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_2_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_2'          AS name,
-       toString(metadata_2)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_2)
-  AND notEmpty(metadata_2)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_3_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_3'          AS name,
-       toString(metadata_3)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_3)
-  AND notEmpty(metadata_3)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_4_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_4'          AS name,
-       toString(metadata_4)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_4)
-  AND notEmpty(metadata_4)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_5_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_5'          AS name,
-       toString(metadata_5)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_5)
-  AND notEmpty(metadata_5)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_6_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_6'          AS name,
-       toString(metadata_6)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_6)
-  AND notEmpty(metadata_6)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_7_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_7'          AS name,
-       toString(metadata_7)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_7)
-  AND notEmpty(metadata_7)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_8_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_8'          AS name,
-       toString(metadata_8)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_8)
-  AND notEmpty(metadata_8)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_9_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_9'          AS name,
-       toString(metadata_9)  AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_9)
-  AND notEmpty(metadata_9)
-GROUP BY ALL;
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_metadata_10_mv
-    TO product_analytics.autocomplete_simple AS
-SELECT project_id,
-       FALSE                 AS auto_captured,
-       'sessions'            AS source,
-       'metadata_10'         AS name,
-       toString(metadata_10) AS value,
-       sumState(toUInt16(1)) AS data_count,
-       _timestamp
-FROM experimental.sessions
-WHERE isNotNull(metadata_10)
-  AND notEmpty(metadata_10)
-GROUP BY ALL;
-
 CREATE TABLE IF NOT EXISTS product_analytics.user_properties
 (
     project_id             UInt16,
@@ -1234,17 +775,6 @@ CREATE TABLE IF NOT EXISTS product_analytics.user_properties
 ) ENGINE = ReplacingMergeTree(_timestamp)
       PARTITION BY toYYYYMM(_timestamp)
       ORDER BY (project_id, user_id, property_name, value_type, auto_captured_property);
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.user_properties_extractor_mv
-    TO product_analytics.user_properties AS
-SELECT project_id,
-       `$user_id` AS user_id,
-       a.1        AS property_name,
-       a.2        AS value_type,
-       FALSE      AS auto_captured_property
-FROM product_analytics.users
-         ARRAY JOIN JSONAllPathsWithTypes(`properties`) AS a
-GROUP BY ALL;
 
 CREATE TABLE IF NOT EXISTS product_analytics.autocomplete_user_properties_grouped
 (
@@ -1259,6 +789,215 @@ CREATE TABLE IF NOT EXISTS product_analytics.autocomplete_user_properties_groupe
       PARTITION BY toYYYYMM(_timestamp)
       TTL _timestamp + INTERVAL 1 MONTH;
 
+
+-- =====================================================================================
+-- MATERIALIZED VIEWS
+-- All materialized views are placed at the end of the script to ensure
+-- all referenced tables and functions exist before the views are created.
+-- =====================================================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS experimental.sessions_l7d_mv
+            ENGINE = ReplacingMergeTree(_timestamp)
+                PARTITION BY toYYYYMMDD(datetime)
+                ORDER BY (project_id, datetime, session_id)
+                TTL datetime + INTERVAL 7 DAY
+                SETTINGS index_granularity = 512
+            POPULATE
+AS
+SELECT session_id,
+       project_id,
+       tracker_version,
+       rev_id,
+       user_uuid,
+       user_os,
+       user_os_version,
+       user_browser,
+       user_browser_version,
+       user_device,
+       user_device_type,
+       user_country,
+       user_city,
+       user_state,
+       platform,
+       datetime,
+       timezone,
+       duration,
+       pages_count,
+       events_count,
+       errors_count,
+       utm_source,
+       utm_medium,
+       utm_campaign,
+       user_id,
+       user_anonymous_id,
+       issue_types,
+       referrer,
+       base_referrer,
+       screen_width,
+       screen_height,
+       metadata_1,
+       metadata_2,
+       metadata_3,
+       metadata_4,
+       metadata_5,
+       metadata_6,
+       metadata_7,
+       metadata_8,
+       metadata_9,
+       metadata_10,
+       _timestamp
+FROM experimental.sessions
+WHERE datetime >= now() - INTERVAL 7 DAY
+  AND isNotNull(duration)
+  AND duration > 0;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.all_events_extractor_mv
+    TO product_analytics.all_events AS
+SELECT project_id,
+       `$auto_captured` AS auto_captured,
+       `$event_name`    AS event_name,
+       created_at       AS created_at
+FROM product_analytics.events
+GROUP BY ALL;
+
+-- Incremental materialized view to fill event_properties using $properties & properties
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.event_dproperties_extractor_mv
+    TO product_analytics.event_properties AS
+SELECT project_id,
+       `$event_name`    AS event_name,
+       a.1              AS property_name,
+       a.2              AS value_type,
+       `$auto_captured` AS auto_captured_event,
+       TRUE             AS auto_captured_property,
+       created_at
+FROM product_analytics.events
+         ARRAY JOIN JSONAllPathsWithTypes(`$properties`) AS a
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.event_properties_extractor_mv
+    TO product_analytics.event_properties AS
+SELECT project_id,
+       `$event_name`    AS event_name,
+       a.1              AS property_name,
+       a.2              AS value_type,
+       `$auto_captured` AS auto_captured_event,
+       FALSE            AS auto_captured_property,
+       created_at
+FROM product_analytics.events
+         ARRAY JOIN JSONAllPathsWithTypes(`properties`) AS a
+GROUP BY ALL;
+
+-- Incremental materialized view to fill all_properties
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.events_all_properties_extractor_mv
+    TO product_analytics.all_properties AS
+SELECT project_id,
+       'events'                    AS source,
+       property_name,
+       TRUE                        AS is_event_property,
+       auto_captured_property      AS auto_captured,
+       0                           AS data_count,
+       0                           AS query_count,
+       event_properties.created_at AS created_at
+FROM product_analytics.event_properties;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.users_all_properties_extractor_mv
+    TO product_analytics.all_properties AS
+SELECT project_id,
+       'users'                AS source,
+       property_name,
+       FALSE                  AS is_event_property,
+       auto_captured_property AS auto_captured,
+       0                      AS data_count,
+       0                      AS query_count,
+       _timestamp             AS created_at
+FROM product_analytics.user_properties;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_events_grouped_mv
+    TO product_analytics.autocomplete_events_grouped AS
+SELECT project_id,
+       `$event_name`         AS value,
+       sumState(toUInt16(1)) AS data_count
+FROM product_analytics.events
+WHERE value != ''
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_event_properties_grouped_mv
+    TO product_analytics.autocomplete_event_properties_grouped AS
+SELECT project_id,
+       `$event_name`         AS event_name,
+       a.1                   AS property_name,
+       a.2                   AS value,
+       sumState(toUInt16(1)) AS data_count
+FROM product_analytics.events
+         ARRAY JOIN JSONExtractKeysAndValues(toString(`properties`), 'String') AS a
+WHERE length(a.1) > 0
+  AND isNull(toFloat64OrNull(a.1))
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_event_dproperties_grouped_mv
+    TO product_analytics.autocomplete_event_properties_grouped AS
+SELECT project_id,
+       `$event_name`         AS event_name,
+       a.1                   AS property_name,
+       a.2                   AS value,
+       sumState(toUInt16(1)) AS data_count
+FROM product_analytics.events
+         ARRAY JOIN JSONExtractKeysAndValues(toString(`$properties`), 'String') AS a
+WHERE length(a.1) > 0
+  AND isNull(toFloat64OrNull(a.1))
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_sessions_mv
+    TO product_analytics.autocomplete_simple AS
+SELECT project_id,
+       t.3                   AS auto_captured,
+       'sessions'            AS source,
+       t.1                   AS name,
+       toString(t.2)         AS value,
+       sumState(toUInt16(1)) AS data_count,
+       _timestamp
+FROM experimental.sessions
+         ARRAY JOIN
+     [--(name,column,auto-captured)
+         ('user_browser', user_browser, TRUE),
+         ('user_browser_version', user_browser_version, TRUE),
+         ('user_country', user_country, TRUE),
+         ('user_state', user_state, TRUE),
+         ('user_city', user_city, TRUE),
+         ('user_device', user_device, TRUE),
+         ('rev_id', rev_id, TRUE),
+         ('referrer', referrer, TRUE),
+         ('utm_source', utm_source, TRUE),
+         ('utm_medium', utm_medium, TRUE),
+         ('utm_campaign', utm_campaign, TRUE),
+         ('user_id', user_id, FALSE),
+         ('user_anonymous_id', user_anonymous_id, FALSE),
+         ('metadata_1', metadata_1, FALSE),
+         ('metadata_2', metadata_2, FALSE),
+         ('metadata_3', metadata_3, FALSE),
+         ('metadata_4', metadata_4, FALSE),
+         ('metadata_5', metadata_5, FALSE),
+         ('metadata_6', metadata_6, FALSE),
+         ('metadata_7', metadata_7, FALSE),
+         ('metadata_8', metadata_8, FALSE),
+         ('metadata_9', metadata_9, FALSE),
+         ('metadata_10', metadata_10, FALSE)
+         ] AS t
+WHERE isNotNull(t.2)
+  AND notEmpty(toString(t.2))
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.user_properties_extractor_mv
+    TO product_analytics.user_properties AS
+SELECT project_id,
+       `$user_id` AS user_id,
+       a.1        AS property_name,
+       a.2        AS value_type,
+       FALSE      AS auto_captured_property
+FROM product_analytics.users
+         ARRAY JOIN JSONAllPathsWithTypes(`properties`) AS a
+GROUP BY ALL;
+
 CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_user_properties_grouped_mv
     TO product_analytics.autocomplete_user_properties_grouped AS
 SELECT project_id,
@@ -1270,4 +1009,68 @@ FROM product_analytics.users
          ARRAY JOIN JSONExtractKeysAndValues(toString(`properties`), 'String') AS a
 WHERE length(a.1) > 0
   AND isNull(toFloat64OrNull(a.1))
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_events_mv
+    TO product_analytics.autocomplete_simple AS
+SELECT project_id,
+       t.3                   AS auto_captured,
+       'events'              AS source,
+       t.1                   AS name,
+       toString(t.2)         AS value,
+       sumState(toUInt16(1)) AS data_count,
+       _timestamp
+FROM product_analytics.events
+         ARRAY JOIN
+     [--(name,column,auto-captured)
+         ('$user_id', "$user_id", FALSE),
+         ('$sdk_edition', "$sdk_edition", TRUE),
+         ('$sdk_version', "$sdk_version", TRUE),
+         ('$current_url', "$current_url", TRUE),
+         ('$current_path', "$current_path", TRUE),
+         ('$initial_referrer', "$initial_referrer", TRUE),
+         ('$referring_domain', "$referring_domain", TRUE),
+         ('$country', "$country", TRUE),
+         ('$state', "$state", TRUE),
+         ('$city', "$city", TRUE),
+         ('$or_api_endpoint', "$or_api_endpoint", TRUE)
+         ] AS t
+WHERE isNotNull(t.2)
+  AND notEmpty(toString(t.2))
+GROUP BY ALL;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS product_analytics.autocomplete_simple_users_mv
+    TO product_analytics.autocomplete_simple AS
+SELECT project_id,
+       t.3                   AS auto_captured,
+       'users'               AS source,
+       t.1                   AS name,
+       toString(t.2)         AS value,
+       sumState(toUInt16(1)) AS data_count,
+       _timestamp
+FROM product_analytics.users
+         ARRAY JOIN
+     [--(name,column,auto-captured)
+         ('$user_id', "$user_id", FALSE),
+         ('$email', "$email", FALSE),
+         ('$name', "$name", FALSE),
+         ('$first_name', "$first_name", FALSE),
+         ('$last_name', "$last_name", FALSE),
+         ('$phone', "$phone", FALSE),
+         ('$sdk_edition', "$sdk_edition", TRUE),
+         ('$sdk_version', "$sdk_version", TRUE),
+         ('$current_url', "$current_url", TRUE),
+         ('$current_path', "$current_path", TRUE),
+         ('$initial_referrer', "$initial_referrer", TRUE),
+         ('$referring_domain', "$referring_domain", TRUE),
+         ('initial_utm_source', initial_utm_source, TRUE),
+         ('initial_utm_medium', initial_utm_medium, TRUE),
+         ('initial_utm_campaign', initial_utm_campaign, TRUE),
+         ('$country', "$country", TRUE),
+         ('$state', "$state", TRUE),
+         ('$city', "$city", TRUE),
+         ('$or_api_endpoint', "$or_api_endpoint", TRUE)
+         ] AS t
+WHERE isNotNull(t.2)
+  AND notEmpty(toString(t.2))
 GROUP BY ALL;

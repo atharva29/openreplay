@@ -1,11 +1,13 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import { trackerInstance } from '@/init/openreplay';
+import { Filter } from '@/mstore/types/filterConstants';
 import { Popover, Spin } from 'antd';
 import cn from 'classnames';
 import { observer } from 'mobx-react-lite';
-import FilterModal from '../FilterModal/FilterModal';
-import { Filter } from '@/mstore/types/filterConstants';
-import { trackerInstance } from '@/init/openreplay';
+import React, { useCallback, useMemo, useState } from 'react';
+
 import { mobileScreen } from 'App/utils/isMobile';
+
+import FilterModal from '../FilterModal/FilterModal';
 
 interface FilterSelectionProps {
   filters: Filter[];
@@ -98,14 +100,16 @@ const FilterSelection: React.FC<FilterSelectionProps> = observer(
       : children;
 
     return (
-      // <div className={cn('relative flex-shrink-0')}>
+      // <div className={cn('relative shrink-0')}>
       <Popover
         content={content}
         trigger="click"
         open={open}
         onOpenChange={handleOpenChange}
         placement={mobileScreen ? 'bottom' : 'bottomLeft'}
-        overlayClassName="filter-selection-popover rounded-lg border border-gray-200 shadow-sm shadow-gray-200 overflow-hidden"
+        classNames={{
+          root: 'filter-selection-popover rounded-lg border border-gray-200 shadow-xs shadow-gray-200 overflow-hidden',
+        }}
         destroyOnHidden={true}
         arrow={false}
       >

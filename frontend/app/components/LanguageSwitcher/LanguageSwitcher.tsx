@@ -33,8 +33,8 @@ function LanguageSwitcher() {
   const menuItems: MenuProps['items'] = langs.map((lang) => ({
     key: lang.code,
     label: (
-      <div key={lang.code} className="!py-1 flex items-center gap-2">
-        <Typography className="capitalize">{lang.label}</Typography>
+      <div key={lang.code} className="py-1! flex items-center gap-2">
+        <Typography className="capitalize!">{lang.label}</Typography>
       </div>
     ),
   }));
@@ -61,7 +61,7 @@ function LanguageSwitcher() {
             </div>
           </Button>
         </Dropdown>
-        <Button className={'w-fit'} onClick={handleChangeLanguage}>
+        <Button className={'w-fit!'} onClick={handleChangeLanguage}>
           {i18n.t('Update')}
         </Button>
       </div>

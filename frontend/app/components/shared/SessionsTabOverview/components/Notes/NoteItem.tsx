@@ -62,13 +62,13 @@ function NoteItem(props: Props) {
             : `?note=${props.note.noteId}`)
         }
       >
-        <div className="flex flex-col p-2 rounded cursor-pointer justify-between">
+        <div className="flex flex-col p-2 rounded-sm cursor-pointer justify-between">
           <div className="flex py-1 text-base">
             {props.note.tag ? (
               <Tag
                 color={tagProps[props.note.tag]}
                 className="border-0 rounded-lg hover:inherit gap-2 w-14 text-center"
-                bordered={false}
+                variant="filled"
               >
                 {props.note.tag}
               </Tag>

@@ -41,7 +41,7 @@ type SdkDataBatch struct {
 
 func NewUser(userID string) *User {
 	return &User{
-		UserID:     userID,
+		UserID:     trimString(userID, 255),
 		Properties: make(map[string]interface{}),
 	}
 }
@@ -74,7 +74,132 @@ type User struct {
 	State         string                 `ch:"$state"`
 	City          string                 `ch:"$city"`
 	OrApiEndpoint string                 `ch:"$or_api_endpoint"`
+	CreatedAt     time.Time              `ch:"$created_at"`
 	FirstEventAt  time.Time              `ch:"$first_event_at"`
+	LastSeen      time.Time              `ch:"$last_seen"`
+}
+
+var defaultUserProperties = map[string]struct{}{
+	"email":      {},
+	"name":       {},
+	"first_name": {},
+	"last_name":  {},
+	"phone":      {},
+	"avatar":     {},
+}
+
+func isDefaultUserProperty(property string) bool {
+	_, ok := defaultUserProperties[property]
+	return ok
+}
+
+func (u *User) SetProperty(key string, value interface{}) {
+	if !isDefaultUserProperty(key) {
+		u.Properties[key] = value
+		return
+	}
+	stringValue, ok := value.(string)
+	if !ok {
+		return
+	}
+	if key != "avatar" {
+		stringValue = trimString(stringValue, 255)
+	}
+	switch key {
+	case "email":
+		u.Email = stringValue
+	case "name":
+		u.Name = stringValue
+	case "first_name":
+		u.FirstName = stringValue
+	case "last_name":
+		u.LastName = stringValue
+	case "phone":
+		u.Phone = stringValue
+	case "avatar":
+		u.Avatar = stringValue
+	}
+}
+
+func (u *User) SetPropertyOnce(key string, value interface{}) {
+	if !isDefaultUserProperty(key) {
+		if _, ok := u.Properties[key]; !ok {
+			u.Properties[key] = value
+		}
+		return
+	}
+	stringValue, ok := value.(string)
+	if !ok {
+		return
+	}
+	if key != "avatar" {
+		stringValue = trimString(stringValue, 255)
+	}
+	switch key {
+	case "email":
+		if u.Email == "" {
+			u.Email = stringValue
+		}
+	case "name":
+		if u.Name == "" {
+			u.Name = stringValue
+		}
+	case "first_name":
+		if u.FirstName == "" {
+			u.FirstName = stringValue
+		}
+	case "last_name":
+		if u.LastName == "" {
+			u.LastName = stringValue
+		}
+	case "phone":
+		if u.Phone == "" {
+			u.Phone = stringValue
+		}
+	case "avatar":
+		if u.Avatar == "" {
+			u.Avatar = stringValue
+		}
+	}
+}
+
+func (u *User) IncrementProperty(key string, value interface{}) {
+	intVal, ok := toInt(value)
+	if !ok {
+		return
+	}
+	curr := u.Properties[key]
+	intCurr, ok := toInt(curr)
+	if !ok {
+		return
+	}
+	u.Properties[key] = intCurr + intVal
+}
+
+func toInt(v interface{}) (int, bool) {
+	if v == nil {
+		return 0, true // consider as an empty value
+	}
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int32:
+		return int(n), true
+	case int64:
+		return int(n), true
+	case float32:
+		return int(n), true
+	case float64:
+		return int(n), true
+	case string:
+		i, err := strconv.Atoi(n)
+		if err != nil {
+			return 0, false
+		}
+		return i, true
+	default:
+		return 0, false
+	}
 }
 
 var defaultUserProperties = map[string]struct{}{
@@ -201,4 +326,11 @@ func (u *User) PropertiesString() string {
 		return ""
 	}
 	return string(res)
+}
+
+func trimString(str string, ln int) string {
+	if len(str) < ln {
+		return str
+	}
+	return str[:ln]
 }

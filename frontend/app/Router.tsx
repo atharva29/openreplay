@@ -53,7 +53,7 @@ const Router: React.FC<RouterProps> = (props) => {
   const { siteId } = projectsStore;
   const { sitesLoading } = projectsStore;
   const sites = projectsStore.list;
-  const loading = Boolean(userInfoLoading ||  sitesLoading);
+  const loading = Boolean(userInfoLoading || sitesLoading);
   const initSite = projectsStore.initProject;
   const fetchSiteList = projectsStore.fetchList;
 
@@ -102,7 +102,7 @@ const Router: React.FC<RouterProps> = (props) => {
     }
     const userData = await fetchUserInfo();
     const siteIdFromPath = location.pathname.split('/')[1];
-    await fetchSiteList(siteIdFromPath);
+    await fetchSiteList(siteIdFromPath, userData?.tenantId);
     mstore.initClient();
 
     if (userData?.tenantId) {
@@ -114,6 +114,11 @@ const Router: React.FC<RouterProps> = (props) => {
 
       if (userData?.tenantId === storedTenantId) {
         projectsStore.setSiteId(storedSiteId!);
+      } else {
+        localStorage.setItem(
+          SITE_ID_STORAGE_KEY,
+          `${projectsStore.siteId}_$_${userData.tenantId}`,
+        );
       }
     }
 

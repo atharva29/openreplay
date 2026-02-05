@@ -54,7 +54,7 @@ function UserList(props: Props) {
         size="small"
         show={!loading && length === 0}
       >
-        <div className="mt-3 rounded bg-white">
+        <div className="mt-3 rounded-sm bg-white">
           <div className="grid grid-cols-12 py-3 px-5 font-medium">
             <div className="col-span-5">{t('Name')}</div>
             <div className="col-span-3">{t('Role')}</div>
@@ -64,7 +64,7 @@ function UserList(props: Props) {
             <div className="hidden md:block md:col-span-2" />
           </div>
 
-          <Divider className="m-0" />
+          <Divider className="m-0!" />
 
           {sliceListPerPage(list, userStore.page - 1, userStore.pageSize).map(
             (user: any) => (
@@ -83,7 +83,7 @@ function UserList(props: Props) {
                   isEnterprise={isEnterprise}
                   isOnboarding={isOnboarding}
                 />
-                <Divider className="m-0" />
+                <Divider className="m-0!" />
               </>
             ),
           )}

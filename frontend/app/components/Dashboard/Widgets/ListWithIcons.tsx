@@ -27,7 +27,7 @@ function ListWithIcons({ list = [] }: Props) {
             padding: '4px 10px',
             lineHeight: '1px',
           }}
-          className={cn('rounded')} // Remove hover:bg-active-blue and cursor-pointer
+          className={cn('rounded-sm')} // Remove hover:bg-active-blue and cursor-pointer
         >
           <List.Item.Meta
             className="m-0"
@@ -35,7 +35,7 @@ function ListWithIcons({ list = [] }: Props) {
             title={
               <div className="m-0">
                 <div className="flex justify-between m-0 p-0">
-                  <Typography.Text className="w-[95%]">
+                  <Typography.Text className="w-[95%]!">
                     {row.name}
                   </Typography.Text>
                   <Typography.Text type="secondary">

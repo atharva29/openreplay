@@ -82,7 +82,7 @@ func main() {
 		messages.MsgMetadata, messages.MsgIssueEvent, messages.MsgSessionStart, messages.MsgSessionEnd,
 		messages.MsgUserID, messages.MsgUserAnonymousID, messages.MsgPerformanceTrackAggr,
 		messages.MsgJSException, messages.MsgResourceTiming, messages.MsgCustomEvent, messages.MsgCustomIssue,
-		messages.MsgFetch, messages.MsgNetworkRequest, messages.MsgGraphQL, messages.MsgStateAction, messages.MsgMouseClick,
+		messages.MsgNetworkRequest, messages.MsgGraphQL, messages.MsgStateAction, messages.MsgMouseClick,
 		messages.MsgMouseClickDeprecated, messages.MsgSetPageLocation, messages.MsgSetPageLocationDeprecated,
 		messages.MsgPageLoadTiming, messages.MsgPageRenderTiming,
 		messages.MsgPageEvent, messages.MsgPageEventDeprecated, messages.MsgMouseThrashing, messages.MsgInputChange,
@@ -113,7 +113,7 @@ func main() {
 		log.Fatal(ctx, "can't init message consumer: %s", err)
 	}
 
-	sdkSaver, err := sdk.New(cfg, log, chConnector, sessManager, users, chConn)
+	sdkSaver, err := sdk.New(cfg, log, chConnector, sessManager, users, chConn, redisConn)
 	if err != nil {
 		log.Fatal(ctx, "can't init sdk saver: %s", err)
 	}

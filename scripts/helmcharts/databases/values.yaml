@@ -111,6 +111,7 @@ postgresql:
     registry: ghcr.io
     repository: openreplay/postgres
     tag: 17
+  enabled: true
   resources:
     limits:
       cpu: 1
@@ -224,11 +225,8 @@ kafka:
 # Enterprise dbs
 clickhouse:
   image:
-    tag: "25.11-alpine"
+    tag: "25.12.3.21-alpine"
   enabled: false
-
-postgreql:
-  enabled: true
 
 # For enterpriseEdition Only
 vault:

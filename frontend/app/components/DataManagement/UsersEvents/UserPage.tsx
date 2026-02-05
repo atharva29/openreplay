@@ -83,10 +83,7 @@ function UserInfo({ userId }: { userId: string }) {
     if (!confirmed) return;
     await analyticsStore.deleteUser(userId);
     history.push(
-      withSiteId(
-        dataManagement.usersEventsList('users'),
-        projectsStore.activeSiteId ?? '',
-      ),
+      withSiteId(dataManagement.usersList(), projectsStore.activeSiteId ?? ''),
     );
   };
 
@@ -119,7 +116,7 @@ function UserInfo({ userId }: { userId: string }) {
   const openList = () => {
     history.push(
       withSiteId(
-        dataManagement.usersEventsList('users'),
+        dataManagement.usersList(),
         projectsStore.activeSiteId ?? '',
       ),
     );
@@ -132,7 +129,7 @@ function UserInfo({ userId }: { userId: string }) {
           items={[
             {
               label: 'Users',
-              to: dataManagement.usersEventsList('users'),
+              to: dataManagement.usersList(),
               withSiteId: true,
             },
             { label: 'User Details' },
@@ -159,8 +156,8 @@ function UserInfo({ userId }: { userId: string }) {
       <Breadcrumb
         items={[
           {
-            label: 'Users',
-            to: dataManagement.usersEventsList('users'),
+            label: 'People',
+            to: dataManagement.usersList(),
             withSiteId: true,
           },
           { label: user?.name || user?.userId || 'User Details' },

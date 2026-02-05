@@ -74,31 +74,34 @@ func (e *handlersImpl) GetAll() []*api.Description {
 	}
 }
 
-func getSessionTimestamp(req *StartSessionRequest, startTimeMili int64) (ts uint64) {
-	ts = uint64(req.Timestamp)
+func getSessionTimestamp(req *StartSessionRequest, startTimeMili int64) uint64 {
 	if req.IsOffline {
-		return
+		return uint64(req.Timestamp)
 	}
-	c, err := semver.NewConstraint(">=4.1.6")
+	ts := uint64(startTimeMili)
+	if req.BufferDiff > 0 && req.BufferDiff < 5*60*1000 {
+		ts -= req.BufferDiff
+	}
+	return ts
+}
+
+func validateTrackerVersion(ver string) error {
+	c, err := semver.NewConstraint(">=6.0.0")
 	if err != nil {
-		return
+		return err
 	}
-	ver := req.TrackerVersion
 	parts := strings.Split(ver, "-")
 	if len(parts) > 1 {
 		ver = parts[0]
 	}
 	v, err := semver.NewVersion(ver)
 	if err != nil {
-		return
+		return err
 	}
-	if c.Check(v) {
-		ts = uint64(startTimeMili)
-		if req.BufferDiff > 0 && req.BufferDiff < 5*60*1000 {
-			ts -= req.BufferDiff
-		}
+	if !c.Check(v) {
+		return errors.New("unsupported tracker version")
 	}
-	return
+	return nil
 }
 
 func (e *handlersImpl) startSessionHandlerWeb(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +130,11 @@ func (e *handlersImpl) startSessionHandlerWeb(w http.ResponseWriter, r *http.Req
 
 	// Add tracker version to context
 	r = r.WithContext(context.WithValue(r.Context(), "tracker", req.TrackerVersion))
+	if err := validateTrackerVersion(req.TrackerVersion); err != nil {
+		e.log.Error(r.Context(), "unsupported tracker version: %s, err: %s", req.TrackerVersion, err)
+		e.responser.ResponseWithError(e.log, r.Context(), w, http.StatusUpgradeRequired, errors.New("please upgrade the tracker version"), startTime, r.URL.Path, bodySize)
+		return
+	}
 
 	// Handler's logic
 	if req.ProjectKey == nil {
@@ -215,7 +223,7 @@ func (e *handlersImpl) startSessionHandlerWeb(w http.ResponseWriter, r *http.Req
 				UserCountry:          geoInfo.Pack(),
 				UserDeviceMemorySize: req.DeviceMemory,
 				UserDeviceHeapSize:   req.JsHeapSizeLimit,
-				UserID:               req.UserID,
+				UserID:               trimString(req.UserID, 255),
 			}
 
 			// Save sessionStart to db
@@ -281,6 +289,13 @@ func (e *handlersImpl) startSessionHandlerWeb(w http.ResponseWriter, r *http.Req
 	modifyResponse(req, startResponse)
 
 	e.responser.ResponseWithJSON(e.log, r.Context(), w, startResponse, startTime, r.URL.Path, bodySize)
+}
+
+func trimString(str string, ln int) string {
+	if len(str) < ln {
+		return str
+	}
+	return str[:ln]
 }
 
 func (e *handlersImpl) pushMessagesHandlerWeb(w http.ResponseWriter, r *http.Request) {

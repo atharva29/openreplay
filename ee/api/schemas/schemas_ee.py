@@ -10,12 +10,12 @@ from .transformers_validators import remove_whitespace
 
 class Permissions(str, Enum):
     SESSION_REPLAY = "SESSION_REPLAY"
+    SESSION_EXPORT = "SESSION_EXPORT"
     DEV_TOOLS = "DEV_TOOLS"
     # errors = "ERRORS"
     METRICS = "METRICS"
     ASSIST_LIVE = "ASSIST_LIVE"
     ASSIST_CALL = "ASSIST_CALL"
-    FEATURE_FLAGS = "FEATURE_FLAGS"
     SPOT = "SPOT"
     SPOT_PUBLIC = "SPOT_PUBLIC"
     DATA_MANAGEMENT = "DATA_MANAGEMENT"
@@ -52,14 +52,6 @@ class RolePayloadSchema(BaseModel):
     all_projects: bool = Field(default=True)
     projects: List[int] = Field(default=[])
     _transform_name = field_validator('name', mode="before")(remove_whitespace)
-
-
-class SignalsSchema(BaseModel):
-    timestamp: int = Field(...)
-    action: str = Field(...)
-    source: str = Field(...)
-    category: str = Field(...)
-    data: dict = Field(default={})
 
 
 class CreateMemberSchema(schemas.CreateMemberSchema):

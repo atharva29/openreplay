@@ -80,12 +80,8 @@ h6 {
     font-weight: inherit;
 }
 
-/*
-Reset links to optimize for opt-in styling instead of opt-out.
-*/
-
 a {
-    color: inherit;
+    color: var(--color-main)!important;
     text-decoration: inherit;
 }
 
@@ -107,7 +103,7 @@ code,
 kbd,
 samp,
 pre {
-    font-family: theme('fontFamily.mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace); /* 1 */
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace); /* 1 */
     font-size: 1em; /* 2 */
 }
 
@@ -324,7 +320,7 @@ textarea {
 input::placeholder,
 textarea::placeholder {
     opacity: 1; /* 1 */
-    color: theme('colors.gray.400', #9ca3af); /* 2 */
+    color: var(--color-gray-400, #9ca3af); /* 2 */
 }
 
 /*

@@ -1,5 +1,5 @@
 fromVersion: "v1.24.0"
-skipMigration: true
+skipMigration: false
 # Databases specific variables
 postgresql: &postgres
   # For generating passwords
@@ -65,7 +65,7 @@ minio:
     minio:
       # For generating passwords
       # `openssl rand -hex 20`
-      # mc alias set myminio http://minio-service:9000 
+      # mc alias set myminio http://minio-service:9000
       accessKey: &accessKey "8d74a14efbcad5b163de058c303b1fd0d4daac33"
       secretKey: &secretKey "415121ed34651742adcb9ec635bed04a6bb34fb1"
 
@@ -103,7 +103,8 @@ ingress-nginx: &ingress-nginx
         real-ip-header: "X-Forwarded-For"
         set-real-ip-from: "0.0.0.0/0"
         ssl-redirect: "true"
-        client-max-body-size: "10m"
+        client-max-body-size: "64m"
+        client-body-buffer-size: "512k"
         server-tokens: "false"
         proxy-connect-timeout: "120s"
         proxy-read-timeout: "300s"
@@ -207,4 +208,3 @@ global:
 #     requests:
 #       cpu: 512m
 #       memory: 2056Mi
-

@@ -1,3 +1,35 @@
+## 17.1.6
+
+- canvas module refactoring to add batching, max concurrent requests limit, memory clearing on stop
+
+## 17.1.5
+
+- reexport analytics in singleton impl
+- add webanimations fix (https://github.com/openreplay/openreplay/pull/4186)[#4186] @cdemi
+
+## 17.1.4
+
+- reexport sdk methods on top level
+- send "changetab" message on tracker start immediately
+
+## 17.1.3
+
+- add hashrouter replacer (to ommit hash symbol -- tracker side fix)
+```js
+urls: {
+  // https://site.com/#/path -> https://site.com/path
+  replaceHashSymbol: true,
+},
+```
+
+## 17.1.2
+
+- added referrer field for start req (defaults to document.referrer)
+
+## 17.1.1
+
+- fix type reexport for analytics.categories
+
 ## 17.1.0
 
 - adds analytics package to the tracker to enable user & event tracking

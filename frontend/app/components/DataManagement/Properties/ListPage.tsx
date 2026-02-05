@@ -1,97 +1,293 @@
 import React from 'react';
-import { Input, Table, Button, Dropdown } from 'antd';
-import { MoreOutlined } from '@ant-design/icons';
-import { useHistory } from 'react-router-dom';
+import { Input, Table, Button, Tooltip, Switch } from 'antd';
+import { useHistory, useLocation } from 'react-router-dom';
 import { useStore } from 'App/mstore';
 import { observer } from 'mobx-react-lite';
-import { withSiteId, dataManagement } from 'App/routes';
-import { Album } from 'lucide-react';
-
-import OutsideClickDetectingDiv from 'Shared/OutsideClickDetectingDiv';
-import ColumnsModal from 'Components/DataManagement/Activity/ColumnsModal';
+import { Album, EyeOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import FullPagination from 'Shared/FullPagination';
 import Tabs from 'Shared/Tabs';
+import { fetchList } from './api';
+import EventPropsPage from './EventPropsPage';
+import UserPropsPage from './UserProperty';
+import { TextEllipsis } from 'UI';
 
-const list = [];
+const showHiddenKey = 'data-management-properties-show-hidden';
+function getShowHidden(): boolean {
+  const stored = localStorage.getItem(showHiddenKey);
+  if (stored === 'false') return false;
+  return true;
+}
+
+function HiddenItem() {
+  return (
+    <Tooltip title="This property is hidden from search and analytics">
+      <EyeOff className="text-disabled-text" size={14} />
+    </Tooltip>
+  );
+}
 
 function ListPage() {
-  const [view, setView] = React.useState('users');
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const defaultView = queryParams.get('view') as 'users' | 'events' | null;
+  const pickedItem = queryParams.get('property');
+  const limit = 10;
+  const [page, setPage] = React.useState(1);
+  const [query, setQuery] = React.useState('');
+  const [showHidden, setShowHidden] = React.useState(getShowHidden);
+  const { t } = useTranslation();
+  const [view, setView] = React.useState<'users' | 'events'>(
+    defaultView ?? 'users',
+  );
   const views = [
     {
       key: 'users',
-      label: <div className={'text-lg font-medium'}>Users</div>,
+      label: (
+        <div className={'text-lg font-medium'}>{t('User Properties')}</div>
+      ),
     },
     {
       key: 'events',
-      label: <div className={'text-lg font-medium'}>Events</div>,
+      label: (
+        <div className={'text-lg font-medium'}>{t('Event Properties')}</div>
+      ),
     },
   ];
+  const {
+    data = { properties: [], total: 0 },
+    isPending,
+    refetch,
+  } = useQuery({
+    queryKey: ['props-list', view],
+    queryFn: () => fetchList(view),
+  });
   const { projectsStore } = useStore();
   const siteId = projectsStore.activeSiteId;
   const history = useHistory();
-  const toUser = (id: string) =>
-    history.push(withSiteId(dataManagement.userPage(id), siteId));
-  const toEvent = (id: string) =>
-    history.push(withSiteId(dataManagement.eventPage(id), siteId));
+  const openProp = (name: string) => {
+    queryParams.set('property', name);
+    return history.push({ search: queryParams.toString() });
+  };
+
+  React.useEffect(() => {
+    setPage(1);
+    queryParams.set('view', view);
+    history.replace({
+      search: queryParams.toString(),
+    });
+  }, [view]);
+
+  const list = React.useMemo(() => {
+    if (!data.properties) return [];
+    let filtered = data.properties;
+    if (!showHidden) {
+      filtered = filtered.filter((prop) => prop.status === 'visible');
+    }
+    if (query) {
+      const regexTest = new RegExp(query, 'i');
+      const isIncluded = (text: string) => regexTest.test(text);
+      filtered = filtered.filter(
+        (prop) =>
+          isIncluded(prop.name) ||
+          isIncluded(prop.displayName) ||
+          isIncluded(prop.description),
+      );
+    }
+    return filtered
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice((page - 1) * limit, page * limit);
+  }, [page, data.properties, query, showHidden]);
+
+  if (pickedItem) {
+    if (view === 'users') {
+      const pickedUserProp = data.properties.find(
+        (prop) => prop.name === pickedItem,
+      );
+      if (pickedUserProp) {
+        const userWithFields = {
+          name: pickedUserProp.name,
+          status: pickedUserProp.status,
+          fields: {
+            displayName: { value: pickedUserProp.displayName, readonly: false },
+            description: { value: pickedUserProp.description, readonly: false },
+            volume: {
+              value: pickedUserProp.usersCount?.toString() ?? 0,
+              readonly: true,
+            },
+            type: { value: pickedUserProp.dataType, readonly: true },
+          },
+        };
+        return (
+          <UserPropsPage
+            siteId={siteId!}
+            properties={userWithFields}
+            raw={pickedUserProp}
+            refetchList={refetch}
+          />
+        );
+      }
+    }
+    if (view === 'events') {
+      const pickedEventProp = data.properties.find(
+        (prop) => prop.name === pickedItem,
+      );
+      if (pickedEventProp) {
+        const evWithFields = {
+          name: pickedEventProp.name,
+          status: pickedEventProp.status,
+          fields: {
+            displayName: {
+              value: pickedEventProp.displayName,
+              readonly: false,
+            },
+            description: {
+              value: pickedEventProp.description,
+              readonly: false,
+            },
+            volume: { value: pickedEventProp.count.toString(), readonly: true },
+            type: { value: pickedEventProp.dataType, readonly: true },
+          },
+        };
+        return (
+          <EventPropsPage
+            raw={pickedEventProp}
+            siteId={siteId!}
+            event={evWithFields}
+            refetchList={refetch}
+          />
+        );
+      }
+    }
+  }
 
   return (
     <div
-      className="flex flex-col gap-4 rounded-lg border bg-white mx-auto"
+      className="flex flex-col rounded-lg border bg-white mx-auto"
       style={{ maxWidth: 1360 }}
     >
-      <div className={'flex items-center justify-between border-b px-4 pt-2 '}>
-        <Tabs
-          activeKey={view}
-          onChange={(key) => setView(key)}
-          items={views}
-        />
+      <div className={'flex items-center justify-between border-b px-4'}>
+        <Tabs activeKey={view} onChange={(key) => setView(key)} items={views} />
         <div className="flex items-center gap-2">
-          <Button type={'text'} icon={<Album size={14} />}>
-            Docs
-          </Button>
-          <Input.Search size={'small'} placeholder={'Name, email, ID'} />
+          <Switch
+            checked={showHidden}
+            onChange={(checked) => {
+              setShowHidden(checked);
+              localStorage.setItem(showHiddenKey, String(checked));
+            }}
+            checkedChildren={t('All')}
+            unCheckedChildren={t('Visible')}
+          />
+          <a
+            href="https://docs.openreplay.com/en/product-analytics/data-management/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Button type={'text'} icon={<Album size={14} />}>
+              {t('Docs')}
+            </Button>
+          </a>
+          <div className="w-[320px]">
+            <Input.Search
+              value={query}
+              maxLength={256}
+              onChange={(e) => setQuery(e.target.value)}
+              size={'small'}
+              placeholder={t('Name or description')}
+            />
+          </div>
         </div>
       </div>
-      {view === 'users' ? <UserPropsList toUser={toUser} /> : <EventPropsList toEvent={toEvent} />}
+      {view === 'users' ? (
+        <UserPropsList
+          list={list}
+          page={page}
+          isLoading={isPending}
+          toUserProp={openProp}
+          limit={limit}
+          total={data.total}
+          onPageChange={(page) => setPage(page)}
+        />
+      ) : (
+        <EventPropsList
+          list={list}
+          limit={limit}
+          total={data.total}
+          page={page}
+          isLoading={isPending}
+          toEventProp={openProp}
+          onPageChange={(page) => setPage(page)}
+        />
+      )}
     </div>
   );
 }
 
-function EventPropsList({ toEvent }: { toEvent: (id: string) => void }) {
+function EventPropsList({
+  toEventProp,
+  list,
+  limit,
+  total,
+  page,
+  isLoading,
+  onPageChange,
+}: {
+  toEventProp: (name: string) => void;
+  onPageChange: (page: number) => void;
+  list: any[];
+  limit: number;
+  total: number;
+  page: number;
+  isLoading: boolean;
+}) {
+  const numberFormatter = Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    compactDisplay: 'short',
+  });
   const columns = [
     {
       title: 'Property',
       dataIndex: 'name',
       key: 'name',
-      showSorterTooltip: { target: 'full-header' },
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      sorter: (a: any, b: any) => a.name.localeCompare(b.name),
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
+      render: (text: string, record: any) => (
+        <div className="flex items-center gap-2">
+          <div>{text}</div>
+          {record.status === 'hidden' && <HiddenItem />}
+        </div>
+      ),
     },
     {
       title: 'Display Name',
       dataIndex: 'displayName',
       key: 'displayName',
-      showSorterTooltip: { target: 'full-header' },
-      sorter: (a, b) => a.displayName.localeCompare(b.displayName),
+      sorter: (a: any, b: any) => a.displayName.localeCompare(b.displayName),
+      render: (text: string) => (
+        <TextEllipsis className="link" maxWidth={'185px'} text={text} />
+      ),
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
     },
     {
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
-      showSorterTooltip: { target: 'full-header' },
-      sorter: (a, b) => a.description.localeCompare(b.description),
     },
     {
-      title: '30 Day Volume',
-      dataIndex: 'monthVolume',
-      key: 'monthVolume',
-      showSorterTooltip: { target: 'full-header' },
-      sorter: (a, b) => a.monthVolume.localeCompare(b.monthVolume),
+      title: '30-Day Volume',
+      dataIndex: 'count',
+      key: 'count',
+      sorter: (a: any, b: any) => a.count - b.count,
+      render: (text: string) => (
+        <span>{numberFormatter.format(Number(text))}</span>
+      ),
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
     },
   ];
-  const page = 1;
-  const total = 100;
-  const onPageChange = (page: number) => {};
-  const limit = 10;
   return (
     <div>
       <Table
@@ -99,8 +295,11 @@ function EventPropsList({ toEvent }: { toEvent: (id: string) => void }) {
         dataSource={list}
         pagination={false}
         onRow={(record) => ({
-          onClick: () => toEvent(record.eventId),
+          onClick: () => toEventProp(record.name),
         })}
+        rowHoverable
+        rowClassName={'cursor-pointer'}
+        loading={isLoading}
       />
       <FullPagination
         page={page}
@@ -108,115 +307,90 @@ function EventPropsList({ toEvent }: { toEvent: (id: string) => void }) {
         total={total}
         listLen={list.length}
         onPageChange={onPageChange}
-        entity={'events'}
+        entity={'event properties'}
       />
     </div>
   );
 }
 
-function UserPropsList({ toUser }: { toUser: (id: string) => void }) {
-  const [editCols, setEditCols] = React.useState(false);
-  const [hiddenCols, setHiddenCols] = React.useState([]);
-
-  const dropdownItems = [
-    {
-      label: 'Show/Hide Columns',
-      key: 'edit-columns',
-      onClick: () => setTimeout(() => setEditCols(true), 1),
-    },
-  ];
+function UserPropsList({
+  toUserProp,
+  list,
+  limit,
+  total,
+  page,
+  isLoading,
+  onPageChange,
+}: {
+  toUserProp: (name: string) => void;
+  onPageChange: (page: number) => void;
+  list: any[];
+  limit: number;
+  total: number;
+  page: number;
+  isLoading: boolean;
+}) {
+  const numberFormatter = Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    compactDisplay: 'short',
+  });
   const columns = [
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      showSorterTooltip: { target: 'full-header' },
       sorter: (a, b) => a.name.localeCompare(b.name),
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
+      render: (text: string, record: any) => (
+        <div className="flex items-center gap-2">
+          <div>{text}</div>
+          {record.status === 'hidden' && <HiddenItem />}
+        </div>
+      ),
     },
     {
       title: 'Display Name',
       dataIndex: 'displayName',
       key: 'displayName',
-      showSorterTooltip: { target: 'full-header' },
       sorter: (a, b) => a.displayName.localeCompare(b.displayName),
+      render: (text: string) => (
+        <TextEllipsis className="link" maxWidth={'185px'} text={text} />
+      ),
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
     },
     {
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
-      showSorterTooltip: { target: 'full-header' },
-      sorter: (a, b) => a.description.localeCompare(b.description),
     },
     {
       title: '# Users',
-      dataIndex: 'users',
-      key: 'users',
-      showSorterTooltip: { target: 'full-header' },
-      sorter: (a, b) => a.users.localeCompare(b.users),
-    },
-    {
-      title: (
-        <Dropdown
-          menu={{ items: dropdownItems }}
-          trigger={'click'}
-          placement={'bottomRight'}
-        >
-          <div className={'cursor-pointer'}>
-            <MoreOutlined />
-          </div>
-        </Dropdown>
+      dataIndex: 'usersCount',
+      key: 'usersCount',
+      sorter: (a, b) => a.usersCount - b.usersCount,
+      render: (text: string) => (
+        <span>{numberFormatter.format(Number(text))}</span>
       ),
-      dataIndex: '$__opts__$',
-      key: '$__opts__$',
-      width: 50,
+      showSorterTooltip: false,
+      className: 'cursor-pointer!',
     },
   ];
 
-  const page = 1;
-  const total = 10;
-  const onPageChange = (page: number) => {};
-  const limit = 10;
-  const list = [];
-
-  const onAddFilter = () => console.log('add filter');
-  const excludeFilterKeys = [];
-  const excludeCategory = [];
-
-  const shownCols = columns.map((col) => ({
-    ...col,
-    hidden: hiddenCols.includes(col.key),
-  }));
-  const onUpdateVisibleCols = (cols: string[]) => {
-    setHiddenCols((_) => {
-      return columns
-        .map((col) =>
-          cols.includes(col.key) || col.key === '$__opts__$' ? null : col.key
-        )
-        .filter(Boolean);
-    });
-    setEditCols(false);
-  };
   return (
     <div className="flex flex-col">
       <div className={'relative'}>
-        {editCols ? (
-          <OutsideClickDetectingDiv onClickOutside={() => setEditCols(false)}>
-            <ColumnsModal
-              columns={shownCols.filter((col) => col.key !== '$__opts__$')}
-              onSelect={onUpdateVisibleCols}
-              hiddenCols={hiddenCols}
-              topOffset={'top-24 -mt-4'}
-            />
-          </OutsideClickDetectingDiv>
-        ) : null}
         <Table
           onRow={(record) => ({
-            onClick: () => toUser(record.userId),
+            onClick: () => toUserProp(record.name),
           })}
-          pagination={false}
+          rowHoverable
           rowClassName={'cursor-pointer'}
-          dataSource={[]}
-          columns={shownCols}
+          pagination={false}
+          dataSource={list}
+          columns={columns}
+          loading={isLoading}
         />
       </div>
       <FullPagination
@@ -225,7 +399,7 @@ function UserPropsList({ toUser }: { toUser: (id: string) => void }) {
         total={total}
         listLen={list.length}
         onPageChange={onPageChange}
-        entity={'users'}
+        entity={'user properties'}
       />
     </div>
   );

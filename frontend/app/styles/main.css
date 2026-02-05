@@ -303,6 +303,11 @@ svg {
     overflow-x: scroll;
 }
 
+.markdown-body pre, .markdown-body code {
+    color: var(--color-black)!important;
+    text-shadow: 0 1px var(--color-white)!important;
+}
+
 .markdown-body table::-webkit-scrollbar {
     height: 4px;
     background-color: var(--color-gray-lightest);

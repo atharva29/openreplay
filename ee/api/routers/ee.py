@@ -3,7 +3,7 @@ from typing import Optional
 from chalicelib.core import roles, traces, assist_records
 from chalicelib.core.sessions import sessions
 from chalicelib.core import assist_stats
-from chalicelib.core import unlock, signals
+from chalicelib.core import unlock
 from chalicelib.utils import assist_helper
 
 unlock.check()
@@ -121,16 +121,6 @@ def delete_record(projectId: int, recordId: int, _=Body(None),
     if "errors" in result:
         return result
     return {"data": result}
-
-
-@app.post('/{projectId}/signals', tags=['signals'])
-def send_interactions(projectId: int, data: schemas.SignalsSchema = Body(...),
-                      context: schemas.CurrentContext = Depends(OR_context)):
-    data = signals.handle_frontend_signals_queued(project_id=projectId, user_id=context.user_id, data=data)
-
-    if "errors" in data:
-        return data
-    return {'data': data}
 
 
 @public_app.get('/{project_id}/assist-stats/avg', tags=["assist-stats"])

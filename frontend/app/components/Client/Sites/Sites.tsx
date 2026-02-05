@@ -105,7 +105,7 @@ function Sites() {
             <span className="ml-2">{project.host}</span>
             <div className="ml-4 flex items-center gap-2">
               {project.platform === 'web' ? null : (
-                <Tag bordered={false} color="green">
+                <Tag variant="filled" color="green">
                   {t('MOBILE BETA')}
                 </Tag>
               )}
@@ -147,7 +147,7 @@ function Sites() {
 
   return (
     <Loader loading={loading}>
-      <div className="bg-white rounded-lg shadow-sm border">
+      <div className="bg-white rounded-lg shadow-xs border">
         <div className={cn(stl.tabHeader, 'px-5 pt-5')}>
           <PageTitle
             title={<div className="mr-4">{t('Projects')}</div>}
@@ -186,13 +186,13 @@ function Sites() {
               <div className="col-span-2">{t('Capture Rate')}</div>
               <div className="col-span-3" />
             </div>
-            <Divider className="m-0" />
+            <Divider className="m-0!" />
 
             {sliceListPerPage(filteredSites, page - 1, pageSize).map(
               (project: Project) => (
                 <React.Fragment key={project.id}>
                   <ProjectItem project={project} />
-                  <Divider className="m-0" />
+                  <Divider className="m-0!" />
                 </React.Fragment>
               ),
             )}

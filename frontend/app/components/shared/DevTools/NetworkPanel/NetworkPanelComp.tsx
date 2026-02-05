@@ -236,7 +236,7 @@ function renderStatus({
   return (
     <Tooltip title={tooltipTitle} placement="top">
       <div
-        className="flex items-center gap-1 overflow-hidden overflow-ellipsis"
+        className="flex items-center gap-1 overflow-hidden text-ellipsis"
         style={{ width: 90 }}
       >
         <span className="mr-1">{status}</span>
@@ -655,7 +655,7 @@ export const NetworkPanelComp = observer(
         <BottomBlock.Content>
           <div className="flex items-center justify-between px-4 border-b bg-teal/5 h-8">
             <div className="flex items-center">
-              <Form.Item name="show-errors-only" className="mb-0">
+              <div className="mb-0">
                 <label
                   style={{
                     display: 'flex',
@@ -670,7 +670,7 @@ export const NetworkPanelComp = observer(
                   />
                   <span className="text-sm ms-2">4xx-5xx Only</span>
                 </label>
-              </Form.Item>
+              </div>
 
               {isProcessing && (
                 <span className="text-xs text-gray-500 ml-4">

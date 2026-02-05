@@ -14,12 +14,7 @@ import ActivityManager from './managers/ActivityManager';
 import TabClosingManager from './managers/TabClosingManager';
 import MessageTabSourceManager from './managers/MessageTabSourceManager';
 
-import {
-  MouseThrashing,
-  MType,
-  MouseClick,
-  Message,
-} from './messages';
+import { MouseThrashing, MType, MouseClick, Message } from './messages';
 
 import Screen, {
   INITIAL_STATE as SCREEN_INITIAL_STATE,
@@ -30,7 +25,7 @@ import type { InitialLists } from './Lists';
 import type { SkipInterval } from './managers/ActivityManager';
 
 import HookManager from './managers/HookManager';
-import ConnectionManager from './managers/ConnectionManager'
+import ConnectionManager from './managers/ConnectionManager';
 
 interface RawList {
   event: Record<string, any>[] & { tabId: string | null };
@@ -302,20 +297,29 @@ export default class MessageManager {
     Object.values(this.tabs).forEach((tab) => tab.resetMessageManagers());
   }
 
+  lastT = 0;
   move(t: number): any {
     // usually means waiting for messages from live session
     if (Object.keys(this.tabs).length === 0) return;
+    const isRewind = t < this.lastT;
+    this.lastT = t;
+    if (isRewind) {
+      const inactive = Object.values(this.tabs).filter(
+        (tab) => tab.firstMessageTs > t,
+      );
+      inactive.forEach((tab) => tab.resetToStart());
+    }
     this.activeTabManager.moveReady(t).then(async (tabId) => {
-      const newState: Record<string, any> = {}
+      const newState: Record<string, any> = {};
       const closeMessage = await this.tabCloseManager.moveReady(t);
       if (closeMessage) {
         const { closedTabs } = this.tabCloseManager;
         if (closedTabs.size === this.tabsAmount) {
           if (this.session.durationMs - t < 250) {
-            newState['closedTabs'] = Array.from(closedTabs)
+            newState['closedTabs'] = Array.from(closedTabs);
           }
         } else {
-          newState['closedTabs'] = Array.from(closedTabs)
+          newState['closedTabs'] = Array.from(closedTabs);
         }
       }
       // Moving mouse and setting :hover classes on ready view

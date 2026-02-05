@@ -119,7 +119,7 @@ function DashboardList() {
       render: (isPublic: boolean) => (
         <Tag
           icon={isPublic ? <TeamOutlined /> : <LockOutlined />}
-          bordered={false}
+          variant="filled"
           className="rounded-lg"
         >
           {isPublic ? t('Team') : t('Private')}
@@ -182,7 +182,7 @@ function DashboardList() {
     dashboardsSearch !== '' ? (
       <div className="text-center">
         <div>
-          <Typography.Text className="my-2 text-lg font-medium">
+          <Typography.Text className="my-2! text-lg! font-medium!">
             {t('No matching results')}
           </Typography.Text>
           <div className="mb-2 text-lg text-gray-500 my-3 leading-normal">
@@ -195,7 +195,7 @@ function DashboardList() {
     ) : (
       <div className="text-center">
         <div>
-          <Typography.Text className="my-2 text-lg font-medium">
+          <Typography.Text className="my-2! text-lg! font-medium!">
             {t('Create and organize your insights')}
           </Typography.Text>
           <div className="mb-2 text-lg text-gray-500 leading-normal">
@@ -220,7 +220,9 @@ function DashboardList() {
       <Empty
         image={<AnimatedSVG name={emptyImage} size={imageDimensions.width} />}
         imageStyle={{
-          width: mobileScreen ? window.innerWidth - (window.innerWidth/10) : imageDimensions.width,
+          width: mobileScreen
+            ? window.innerWidth - window.innerWidth / 10
+            : imageDimensions.width,
           height: imageDimensions.height,
           margin: 'auto',
           padding: mobileScreen ? 0 : '2rem 0',
@@ -244,7 +246,8 @@ function DashboardList() {
           simple: true,
           responsive: true,
           rootClassName: 'test',
-          className: 'px-2 pb-6 md:px-4 md:pr-8 md:pb-0 md:mb-0 flex-nowrap',
+          className:
+            'px-2! pb-6! md:px-4! md:pr-8! md:pb-0 md:mb-0 flex-nowrap!',
         }}
         onRow={(record) => ({
           onClick: (e) => {

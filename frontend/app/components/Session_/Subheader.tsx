@@ -143,8 +143,8 @@ function SubHeader(props: any) {
       currentSession.sessionId,
     );
     const statusLabels = {
-      pending: 'Sesison export started',
-      success: 'Session already exported',
+      pending: 'Session export started',
+      success: 'Session already exported, go to Preferences > Exported Videos',
       failure: 'Session export failed, please try again later',
     };
     // @ts-ignore
@@ -194,6 +194,7 @@ function SubHeader(props: any) {
         </div>
       ),
       onClick: onExport,
+      disabled: !account.hasExportPermission,
     });
   }
 
@@ -273,7 +274,7 @@ function SubHeader(props: any) {
               <a
                 href={currentLocation}
                 target="_blank"
-                className="truncate"
+                className="truncate link"
                 rel="noreferrer"
               >
                 {locationTruncated}
