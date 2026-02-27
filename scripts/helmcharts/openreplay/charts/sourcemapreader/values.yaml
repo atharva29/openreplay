@@ -69,12 +69,9 @@ ingress:
   cspSnippet: |-
     # Custom CSP snippet here.
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.org/proxy-connect-timeout: "120"
     nginx.org/proxy-send-timeout: "300"
     nginx.org/proxy-read-timeout: "300"
-  tls:
-    secretName: openreplay-ssl
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

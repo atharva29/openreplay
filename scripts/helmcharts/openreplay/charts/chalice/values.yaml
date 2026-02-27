@@ -67,8 +67,6 @@ ingress:
   enabled: true
   className: "{{ .Values.global.ingress.controller.ingressClassResource.name }}"
   annotations: {}
-  tls:
-    secretName: openreplay-ssl
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious

@@ -79,8 +79,6 @@ ingress:
     allowMethods: "GET, OPTIONS"
     allowHeaders: "sessionid, Content-Type, Authorization"
     maxAge: "1728000"
-  tls:
-    secretName: openreplay-ssl
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
