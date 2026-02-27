@@ -15,7 +15,7 @@ metadata:
       add_header Pragma "no-cache";
       rewrite ^/assist-stats/(.*)$ /$1 break;
 spec:
-  ingressClassName: openreplay
+  ingressClassName: {{ tpl .Values.ingress.className . }}
   rules:
     - host: {{ .Values.global.domainName }} 
       http:

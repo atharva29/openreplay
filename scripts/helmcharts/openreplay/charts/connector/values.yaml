@@ -57,7 +57,7 @@ serviceMonitor:
 
 ingress:
   enabled: false
-  className: ""
+  className: "{{ .Values.global.ingress.controller.ingressClassResource.name }}"
   annotations: {}
   hosts:
     - host: chart-example.local
