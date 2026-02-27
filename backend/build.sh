@@ -32,6 +32,14 @@ check_prereq() {
     return
 }
 
+# Sourcing init scripts
+for file in ./build_init_*; do
+    if [ -f "$file" ]; then
+        echo "Sourcing $file"
+        source "$file"
+    fi
+done
+
 [[ $1 == ee ]] && ee=true
 [[ $PATCH -eq 1 ]] && {
     chart=$2
@@ -54,7 +62,7 @@ update_helm_release() {
 
 function build_service() {
     image="$1"
-    echo "BUILDING $image"
+    echo "BUILDING $image ${image_tag}"
     docker build -t ${DOCKER_REPO:-'local'}/$image:${image_tag} --platform $arch --build-arg ARCH=$arch --build-arg SERVICE_NAME=$image --build-arg GIT_SHA=$git_sha .
     [[ $PUSH_IMAGE -eq 1 ]] && {
         docker push ${DOCKER_REPO:-'local'}/$image:${image_tag}
@@ -92,20 +100,9 @@ function build_api() {
     build_count=1
     for image in $(ls cmd); do
         [[ $image == "video-replays" ]] && continue
-        # First build will cache things
-        if [[ $build_count -eq 1 ]]; then
-            build_service "$image"
-        else
-            build_service "$image" &
-        fi
+        [[ $DEDICATED == 1 ]] && image_tag="$(grep -ER ^.ppVersion ../scripts/helmcharts/openreplay/charts/$image | xargs | awk '{print $2}')"
+        build_service "$image"
         echo "::set-output name=image::${DOCKER_REPO:-'local'}/$image:${image_tag}"
-        [[ $PATCH -eq 1 ]] && update_helm_release $image
-        ((build_count++))
-        # Run max 4 jobs in parallel
-        if [[ $build_count -eq 4 ]]; then
-            wait
-            build_count=1
-        fi
     done
     wait
     cd ../backend
