@@ -12,6 +12,7 @@ metadata:
     {{- include "utilities.labels" . | nindent 4 }}
 spec:
   schedule: "{{ .Values.cron }}"
+  concurrencyPolicy: Replace
   failedJobsHistoryLimit: 1
   successfulJobsHistoryLimit: 1
   jobTemplate:
