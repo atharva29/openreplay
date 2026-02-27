@@ -62,7 +62,7 @@ serviceMonitor:
       scrapeTimeout: 10s
 
 ingress:
-  enabled: true
+  enabled: false
   className: "{{ .Values.global.ingress.controller.ingressClassResource.name }}"
   annotations:
     nginx.org/proxy-connect-timeout: "120s"
