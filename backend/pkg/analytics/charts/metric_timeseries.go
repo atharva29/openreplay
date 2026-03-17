@@ -123,9 +123,9 @@ func (t *TimeSeriesQueryBuilder) buildTimeSeriesQuery(p *Payload, s model.Series
 
 	query := fmt.Sprintf(`SELECT %s
 					FROM generate_series(@startTimestamp,@endTimestamp,@step) AS gs
-							LEFT JOIN (%s) AS ps ON TRUE
-					WHERE ps.datetime >= toDateTime(timestamp/1000)
-						AND ps.datetime < toDateTime((timestamp+@step)/1000)
+							INNER JOIN (%s) AS ps
+							ON ps.datetime >= toDateTime(gs.generate_series/1000)
+							AND ps.datetime < toDateTime((gs.generate_series+@step)/1000)
 					%s ORDER BY timestamp;`,
 		strings.Join(selectParts, ", "), sub, groupByClause)
 
@@ -133,7 +133,7 @@ func (t *TimeSeriesQueryBuilder) buildTimeSeriesQuery(p *Payload, s model.Series
 		"startTimestamp": p.StartTimestamp,
 		"endTimestamp":   p.EndTimestamp,
 		"step":           step,
-		"project_id":     p.ProjectId,
+		"projectId":      p.ProjectId,
 	}
 
 	logQuery(fmt.Sprintf("TimeSeriesQueryBuilder.buildQuery: %s", query))
@@ -283,7 +283,7 @@ func (t *TimeSeriesQueryBuilder) getProjectionAndJoin(metric string, p *Payload)
 		joinEvents := `
 		LEFT JOIN product_analytics.events AS e
 		  ON e.session_id = evt.session_id
-		 AND e.project_id = @project_id`
+		 AND e.project_id = @projectId`
 		if p.SampleRate > 0 && p.SampleRate < 100 {
 			joinEvents += fmt.Sprintf(" AND e.sample_key < %d", p.SampleRate)
 		}

@@ -370,32 +370,44 @@ WHERE %s) AS extra`,
 		countFunction = "sum"
 	}
 
-	breakdownOuterCols := ""
-	groupByClause := "GROUP BY metric_value"
 	if numBreakdowns > 0 {
-		breakdownOuterCols = strings.Join(GetFunnelBreakdownOuterColumns(numBreakdowns), ", ") + ",\n       "
-		groupByClause = "GROUP BY ALL"
-	}
-
-	query = fmt.Sprintf(`
+		breakdownOuterCols := strings.Join(GetFunnelBreakdownOuterColumns(numBreakdowns), ", ")
+		query = fmt.Sprintf(`
 SELECT metric_value AS metric_name,
-       %s%s(%s) AS metric_count,
+       %s,
+       %s(%s) AS metric_count
+FROM %s %s %s
+GROUP BY ALL
+ORDER BY metric_count DESC
+LIMIT %d OFFSET %d;`,
+			breakdownOuterCols,
+			countFunction,
+			distinctColumn,
+			fromSessions,
+			fromEvents,
+			fromExtra,
+			pagination.Limit,
+			pagination.Offset,
+		)
+	} else {
+		query = fmt.Sprintf(`
+SELECT metric_value AS metric_name,
+       %s(%s) AS metric_count,
        count(DISTINCT metric_value) OVER () AS number_of_metrics,
        sum(metric_count) OVER () AS all_count
 FROM %s %s %s
-%s
+GROUP BY metric_value
 ORDER BY metric_count DESC
 LIMIT %d OFFSET %d;`,
-		breakdownOuterCols,
-		countFunction,
-		distinctColumn,
-		fromSessions,
-		fromEvents,
-		fromExtra,
-		groupByClause,
-		pagination.Limit,
-		pagination.Offset,
-	)
+			countFunction,
+			distinctColumn,
+			fromSessions,
+			fromEvents,
+			fromExtra,
+			pagination.Limit,
+			pagination.Offset,
+		)
+	}
 
 	logQuery(fmt.Sprintf("TableQueryBuilder.buildQuery: %s", query))
 
@@ -702,12 +714,12 @@ func (t *TableQueryBuilder) executeWithBreakdowns(ctx context.Context, p *Payloa
 
 	var metricName string
 	bdVals := make([]string, numBreakdowns)
-	var metricCount, numberOfMetrics, allCount uint64
+	var metricCount uint64
 
 	scanArgs := BuildScanArgs(
 		[]interface{}{&metricName},
 		bdVals,
-		[]interface{}{&metricCount, &numberOfMetrics, &allCount},
+		[]interface{}{&metricCount},
 	)
 
 	newZero := func() map[string]uint64 { return make(map[string]uint64) }

@@ -51,9 +51,13 @@ type DataPoint struct {
 	Count     uint64 `json:"count" ch:"count"`
 }
 
+const MaxBreakdowns = 3
+
+const MaxBreakdownCardinality = 1000
+
 type breakdownKey struct {
 	Timestamp uint64
-	Values    [3]string
+	Values    [MaxBreakdowns]string
 }
 
 var mainColumns = map[string][]string{

@@ -472,9 +472,9 @@ func buildInClause(values []string) string {
 
 func buildStaticEventWhere(p *Payload) string {
 	conditions := []string{
-		fmt.Sprintf("main.project_id = %d", p.ProjectId),
-		fmt.Sprintf("main.created_at >= toDateTime(%d / 1000)", p.StartTimestamp),
-		fmt.Sprintf("main.created_at <= toDateTime(%d / 1000)", p.EndTimestamp),
+		"main.project_id = @projectId",
+		"main.created_at >= toDateTime(@startTimestamp / 1000)",
+		"main.created_at <= toDateTime(@endTimestamp / 1000)",
 	}
 	if p.SampleRate > 0 && p.SampleRate < 100 {
 		conditions = append(conditions, fmt.Sprintf("main.sample_key < %d", p.SampleRate))
@@ -488,8 +488,8 @@ func BuildDefaultWhere(p *Payload, tableAlias string, timeColumn ...string) []st
 		col = timeColumn[0]
 	}
 	conditions := []string{
-		fmt.Sprintf("%s.project_id = %d", tableAlias, p.ProjectId),
-		fmt.Sprintf("%s.%s BETWEEN toDateTime(%d) AND toDateTime(%d)", tableAlias, col, p.StartTimestamp/1000, p.EndTimestamp/1000),
+		fmt.Sprintf("%s.project_id = @projectId", tableAlias),
+		fmt.Sprintf("%s.%s BETWEEN toDateTime(@startTimestamp/1000) AND toDateTime(@endTimestamp/1000)", tableAlias, col),
 	}
 	if p.SampleRate > 0 && p.SampleRate < 100 {
 		conditions = append(conditions, fmt.Sprintf("%s.sample_key < %d", tableAlias, p.SampleRate))

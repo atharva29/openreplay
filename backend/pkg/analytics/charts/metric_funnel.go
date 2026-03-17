@@ -219,7 +219,7 @@ func (f *FunnelQueryBuilder) buildQuery(p *Payload) (string, map[string]any, err
 	baseWhere := []string{
 		"e.created_at >= toDateTime(@startTimestamp/1000)",
 		"e.created_at < toDateTime(@endTimestamp/1000)",
-		"e.project_id = @project_id",
+		"e.project_id = @projectId",
 		fmt.Sprintf("e.`$event_name` IN %s", formatEventNames(stages)),
 	}
 
@@ -244,7 +244,7 @@ func (f *FunnelQueryBuilder) buildQuery(p *Payload) (string, map[string]any, err
 	if needsSessionsJoin {
 		mainTables = fmt.Sprintf("%s AS s INNER JOIN %s USING(session_id)", getMainSessionsTable(p.StartTimestamp), mainTables)
 		baseWhere = append(baseWhere, []string{
-			"s.project_id = @project_id",
+			"s.project_id = @projectId",
 			"s.datetime >= toDateTime(@startTimestamp/1000)",
 			"s.datetime < toDateTime(@endTimestamp/1000)"}...)
 		if len(sessionConditions) > 0 {
@@ -296,7 +296,7 @@ func (f *FunnelQueryBuilder) buildQuery(p *Payload) (string, map[string]any, err
 	params := map[string]any{
 		"startTimestamp": p.MetricPayload.StartTimestamp,
 		"endTimestamp":   p.MetricPayload.EndTimestamp,
-		"project_id":     p.ProjectId,
+		"projectId":      p.ProjectId,
 	}
 
 	return q, params, nil
@@ -329,10 +329,16 @@ func buildTColumns(stages []string, eventConditions []string, metricFormat strin
 	return tColumns
 }
 
+var sqlStringLiteralReplacer = strings.NewReplacer(
+	`\`, `\\`,
+	`'`, `''`,
+	`@`, `' || char(64) || '`,
+)
+
 func formatEventNames(stages []string) string {
 	quoted := make([]string, len(stages))
 	for i, stage := range stages {
-		quoted[i] = fmt.Sprintf("'%s'", sqlStringReplacer.Replace(stage))
+		quoted[i] = fmt.Sprintf("'%s'", sqlStringLiteralReplacer.Replace(stage))
 	}
 	return fmt.Sprintf("(%s)", strings.Join(quoted, ", "))
 }

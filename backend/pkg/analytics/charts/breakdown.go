@@ -102,6 +102,9 @@ func GetEventOnlyBreakdownNamedProjection(breakdowns []string, tableAlias string
 }
 
 func ValidateBreakdowns(breakdowns []string) error {
+	if len(breakdowns) > MaxBreakdowns {
+		return fmt.Errorf("too many breakdowns: got %d, max %d", len(breakdowns), MaxBreakdowns)
+	}
 	for _, b := range breakdowns {
 		if _, ok := breakdownDimensions[b]; !ok {
 			return fmt.Errorf("unsupported breakdown %q", b)
@@ -146,13 +149,16 @@ func NewBreakdownTree[T any](zero T) *BreakdownTree[T] {
 	}
 }
 
-func (t *BreakdownTree[T]) Insert(bdVals []string, numBreakdowns int, newZero func() T, accumulate func(*T)) {
+func (t *BreakdownTree[T]) Insert(bdVals []string, numBreakdowns int, newZero func() T, accumulate func(*T)) bool {
 	accumulate(&t.Value)
 	current := t
 	for depth := 0; depth < numBreakdowns; depth++ {
 		bdVal := NormalizeBreakdownValue(bdVals[depth])
 		child, exists := current.Children[bdVal]
 		if !exists {
+			if len(current.Children) >= MaxBreakdownCardinality {
+				return false
+			}
 			child = &BreakdownTree[T]{
 				Value:    newZero(),
 				Children: make(map[string]*BreakdownTree[T]),
@@ -163,6 +169,7 @@ func (t *BreakdownTree[T]) Insert(bdVals []string, numBreakdowns int, newZero fu
 		accumulate(&child.Value)
 		current = child
 	}
+	return true
 }
 
 func (t *BreakdownTree[T]) ToMap(render func(T) interface{}) map[string]interface{} {
@@ -267,7 +274,7 @@ func BuildSessionsFilterConditions(sessionFilters []model.Filter) []string {
 	durConds, _ := BuildDurationWhere(sessionFilters, "s")
 
 	whereParts := []string{
-		"s.project_id = @project_id",
+		"s.project_id = @projectId",
 		"s.datetime >= toDateTime(@startTimestamp/1000)",
 		"s.datetime <= toDateTime(@endTimestamp/1000)",
 	}
@@ -330,7 +337,8 @@ func GetFunnelBreakdownOuterColumns(n int) []string {
 
 func FunnelBreakdownNeedsSessions(breakdowns []string) bool {
 	for _, b := range breakdowns {
-		if strings.HasPrefix(breakdownDimensions[b].EventColumn, "s.") {
+		dim, ok := breakdownDimensions[b]
+		if ok && strings.HasPrefix(dim.EventColumn, "s.") {
 			return true
 		}
 	}
@@ -353,6 +361,9 @@ func BuildSessionsSubQuery(sessionFilters []model.Filter, startTimestamp uint64,
 }
 
 func newBreakdownKey(timestamp uint64, bdVals []string) breakdownKey {
+	if len(bdVals) > MaxBreakdowns {
+		bdVals = bdVals[:MaxBreakdowns]
+	}
 	var key breakdownKey
 	key.Timestamp = timestamp
 	copy(key.Values[:], bdVals)
