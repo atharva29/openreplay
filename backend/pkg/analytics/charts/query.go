@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	sqlStringReplacer      = strings.NewReplacer(`'`, `''`, `@`, `' || char(64) || '`)
+	sqlStringReplacer      = strings.NewReplacer(`\`, `\\`, `'`, `''`, `@`, `' || char(64) || '`)
 	sqlLikePatternReplacer = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`, `'`, `''`, `@`, `' || char(64) || '`)
 	camelToSnakeRe         = regexp.MustCompile("([a-z0-9])([A-Z])")
 )

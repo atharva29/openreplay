@@ -329,16 +329,10 @@ func buildTColumns(stages []string, eventConditions []string, metricFormat strin
 	return tColumns
 }
 
-var sqlStringLiteralReplacer = strings.NewReplacer(
-	`\`, `\\`,
-	`'`, `''`,
-	`@`, `' || char(64) || '`,
-)
-
 func formatEventNames(stages []string) string {
 	quoted := make([]string, len(stages))
 	for i, stage := range stages {
-		quoted[i] = fmt.Sprintf("'%s'", sqlStringLiteralReplacer.Replace(stage))
+		quoted[i] = fmt.Sprintf("'%s'", sqlStringReplacer.Replace(stage))
 	}
 	return fmt.Sprintf("(%s)", strings.Join(quoted, ", "))
 }

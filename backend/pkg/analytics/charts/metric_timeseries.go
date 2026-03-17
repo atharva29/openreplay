@@ -61,8 +61,8 @@ func (t *TimeSeriesQueryBuilder) Execute(ctx context.Context, p *Payload, conn d
 				t.Logger.Error(ctx, "Query timeseries %s error: %v", series.Name, qErr)
 				return nil, fmt.Errorf("series %s: %v", series.Name, qErr)
 			}
+			defer rows.Close()
 			err = ScanBreakdownRows(rows, numBreakdowns, series.Name, data)
-			rows.Close()
 			if err != nil {
 				return nil, fmt.Errorf("series %s: %v", series.Name, err)
 			}
