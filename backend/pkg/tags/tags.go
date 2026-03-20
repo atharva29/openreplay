@@ -10,10 +10,11 @@ import (
 )
 
 type Tag struct {
-	ID              int    `json:"id"`
-	Selector        string `json:"selector"`
-	IgnoreClickRage bool   `json:"icr"`
-	IgnoreDeadClick bool   `json:"idc"`
+	ID              int     `json:"id"`
+	Selector        string  `json:"selector"`
+	IgnoreClickRage bool    `json:"icr"`
+	IgnoreDeadClick bool    `json:"idc"`
+	Location        *string `json:"location"`
 }
 
 type Tags interface {
@@ -37,7 +38,7 @@ func New(log logger.Logger, db pool.Pool) Tags {
 
 func (t *tagsImpl) Get(projectID uint32) ([]Tag, error) {
 	rows, err := t.db.Query(`
-		SELECT tag_id, selector, ignore_click_rage, ignore_dead_click 
+		SELECT tag_id, selector, ignore_click_rage, ignore_dead_click, location 
 		FROM tags WHERE project_id = $1 AND deleted_at IS NULL`, projectID)
 	if err != nil {
 		return nil, err
@@ -50,9 +51,10 @@ func (t *tagsImpl) Get(projectID uint32) ([]Tag, error) {
 		selector        string
 		ignoreClickRage bool
 		ignoreDeadClick bool
+		location        *string
 	)
 	for rows.Next() {
-		if err := rows.Scan(&id, &selector, &ignoreClickRage, &ignoreDeadClick); err != nil {
+		if err := rows.Scan(&id, &selector, &ignoreClickRage, &ignoreDeadClick, &location); err != nil {
 			ctx := context.WithValue(context.Background(), "projectID", projectID)
 			t.log.Error(ctx, "can't scan tag: %s", err)
 			continue
@@ -62,7 +64,9 @@ func (t *tagsImpl) Get(projectID uint32) ([]Tag, error) {
 			Selector:        selector,
 			IgnoreClickRage: ignoreClickRage,
 			IgnoreDeadClick: ignoreDeadClick,
+			Location:        location,
 		})
+		location = nil
 	}
 	if tags == nil {
 		return []Tag{}, nil

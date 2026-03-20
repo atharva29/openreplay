@@ -1122,6 +1122,7 @@ CREATE TABLE public.tags
     selector          text                        NOT NULL,
     ignore_click_rage boolean                     NOT NULL,
     ignore_dead_click boolean                     NOT NULL,
+    location          text                        NULL DEFAULT NULL,
     deleted_at        timestamp without time zone NULL DEFAULT NULL
 );
 CREATE INDEX tags_project_id_idx ON public.tags (project_id);
