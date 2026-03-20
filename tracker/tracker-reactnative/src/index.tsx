@@ -2,14 +2,14 @@ import {
   NativeModules,
   Platform,
   requireNativeComponent,
+  TurboModuleRegistry,
   type TextInputProps,
   UIManager,
   type ViewProps,
 } from 'react-native';
+import type { TurboModule } from 'react-native';
 import network from './network';
 import type { Options as NetworkOptions } from './network';
-
-const { ORTrackerConnector } = NativeModules;
 
 const LINKING_ERROR =
   `The package '@openreplay/react-native' doesn't seem to be linked. Make sure: \n\n` +
@@ -26,7 +26,7 @@ interface Options {
   debugLogs?: boolean;
 }
 
-interface IORTrackerConnector {
+interface IORTrackerConnector extends TurboModule {
   startSession: (
     projectKey: string,
     optionsDict: Options,
@@ -52,6 +52,11 @@ interface IORTrackerConnector {
     duration: number
   ) => void;
 }
+
+// Use TurboModules when available (new architecture), fall back to NativeModules (old architecture)
+const ORTrackerConnector: IORTrackerConnector =
+  TurboModuleRegistry.get<IORTrackerConnector>('ORTrackerConnector') ??
+  NativeModules.ORTrackerConnector;
 
 const RnTrackerTouchTrackingView =
   UIManager.getViewManagerConfig('RnTrackerTouchView') != null
@@ -113,7 +118,7 @@ const patchNetwork = (
   opts: Partial<NetworkOptions>
 ) => {
   if (!patched) {
-    network(ctx, ORTrackerConnector.networkRequest, isServiceUrl, opts);
+    network(ctx, ORTrackerConnector.networkRequest as any, isServiceUrl, opts);
     patched = true;
   }
 };
