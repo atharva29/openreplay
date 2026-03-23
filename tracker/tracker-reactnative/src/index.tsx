@@ -70,9 +70,13 @@ const RnTrackerTouchTrackingView =
         throw new Error('RnTrackerTouchView; ' + LINKING_ERROR);
       };
 
+interface ORTrackedInputProps extends TextInputProps {
+  trackingLabel?: string;
+}
+
 const ORTrackedInput =
   UIManager.getViewManagerConfig('RnTrackedInput') != null
-    ? requireNativeComponent<TextInputProps>('RnTrackedInput')
+    ? requireNativeComponent<ORTrackedInputProps>('RnTrackedInput')
     : () => {
         throw new Error('RnTrackedInput; ' + LINKING_ERROR);
       };
@@ -82,6 +86,18 @@ const ORSanitizedView =
     ? requireNativeComponent<ViewProps>('RnSanitizedView')
     : () => {
         throw new Error('RnSanitizedView; ' + LINKING_ERROR);
+      };
+
+interface ORTrackedViewProps extends ViewProps {
+  screenName: string;
+  viewName: string;
+}
+
+const ORTrackedView =
+  UIManager.getViewManagerConfig('RnTrackerView') != null
+    ? requireNativeComponent<ORTrackedViewProps>('RnTrackerView')
+    : () => {
+        throw new Error('RnTrackerView; ' + LINKING_ERROR);
       };
 
 export function setMetadata(key: string, value: string) {
@@ -140,4 +156,5 @@ export default {
   ORTouchTrackingView: RnTrackerTouchTrackingView,
   ORTrackedInput: ORTrackedInput,
   ORSanitizedView: ORSanitizedView,
+  ORTrackedView: ORTrackedView,
 };

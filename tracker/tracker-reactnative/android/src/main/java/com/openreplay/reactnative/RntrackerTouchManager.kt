@@ -6,6 +6,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
 import com.facebook.react.views.view.ReactViewGroup
@@ -98,9 +99,24 @@ class RnTrackerRootLayout(context: Context) : ReactViewGroup(context) {
     return x >= view.left && x <= view.right && y >= view.top && y <= view.bottom
   }
 
+  private fun extractLabel(view: View?): String {
+    if (view == null) return "Button"
+    view.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { return it }
+    if (view is TextView) {
+      view.text?.toString()?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+    if (view is ViewGroup) {
+      for (i in 0 until view.childCount) {
+        val childLabel = extractLabel(view.getChildAt(i))
+        if (childLabel != "Button") return childLabel
+      }
+    }
+    return "Button"
+  }
+
   inner class GestureListener : GestureDetector.SimpleOnGestureListener() {
     override fun onSingleTapUp(e: MotionEvent): Boolean {
-      val label = currentTappedView?.contentDescription?.toString() ?: "Button"
+      val label = extractLabel(currentTappedView)
       Analytics.sendClick(e, label)
       return super.onSingleTapUp(e)
     }
