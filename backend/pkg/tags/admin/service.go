@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v4"
+
 	"openreplay/backend/pkg/db/postgres/pool"
 	"openreplay/backend/pkg/logger"
 )
@@ -107,10 +109,15 @@ func (s *tagServiceImpl) Update(ctx context.Context, projectID uint32, tagID int
 		UPDATE public.tags
 		SET %s
 		WHERE tag_id = $%d AND project_id = $%d AND deleted_at IS NULL
+		RETURNING tag_id
 	`, strings.Join(setClauses, ", "), idx, idx+1)
 	params = append(params, tagID, projectID)
 
-	if err := s.pgconn.Exec(query, params...); err != nil {
+	var updatedID int
+	if err := s.pgconn.QueryRow(query, params...).Scan(&updatedID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTagNotFound
+		}
 		s.log.Error(ctx, "failed to update tag %d: %s", tagID, err)
 		return fmt.Errorf("update tag: %s", err)
 	}
@@ -122,9 +129,14 @@ func (s *tagServiceImpl) Delete(ctx context.Context, projectID uint32, tagID int
 		UPDATE public.tags
 		SET deleted_at = now() AT TIME ZONE 'utc'
 		WHERE tag_id = $1 AND project_id = $2 AND deleted_at IS NULL
+		RETURNING tag_id
 	`
 
-	if err := s.pgconn.Exec(query, tagID, projectID); err != nil {
+	var deletedID int
+	if err := s.pgconn.QueryRow(query, tagID, projectID).Scan(&deletedID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTagNotFound
+		}
 		s.log.Error(ctx, "failed to delete tag %d: %s", tagID, err)
 		return fmt.Errorf("delete tag: %s", err)
 	}
