@@ -68,13 +68,28 @@ func (h *handlersImpl) listTags(r *api.RequestContext) (any, int, error) {
 		return nil, http.StatusBadRequest, err
 	}
 
-	tags, err := h.service.List(r.Request.Context(), projID)
+	query := r.Request.URL.Query()
+	limit := 10
+	page := 1
+	if val := query.Get("limit"); val != "" {
+		if l, err := strconv.Atoi(val); err == nil && l > 0 {
+			limit = l
+		}
+	}
+	if val := query.Get("page"); val != "" {
+		if p, err := strconv.Atoi(val); err == nil && p > 0 {
+			page = p
+		}
+	}
+	offset := (page - 1) * limit
+
+	resp, err := h.service.List(r.Request.Context(), projID, limit, offset)
 	if err != nil {
 		h.log.Error(r.Request.Context(), "failed to list tags for project %d: %s", projID, err)
 		return nil, http.StatusInternalServerError, err
 	}
 
-	return tags, 0, nil
+	return resp, 0, nil
 }
 
 func (h *handlersImpl) updateTag(r *api.RequestContext) (any, int, error) {

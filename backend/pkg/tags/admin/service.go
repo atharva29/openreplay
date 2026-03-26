@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/jackc/pgx/v4"
 
+	"openreplay/backend/pkg/cache"
 	"openreplay/backend/pkg/db/postgres/pool"
 	"openreplay/backend/pkg/logger"
 )
@@ -19,20 +22,24 @@ var (
 
 type TagService interface {
 	Create(ctx context.Context, projectID uint32, req *CreateTagRequest) (int, error)
-	List(ctx context.Context, projectID uint32) ([]TagResponse, error)
+	List(ctx context.Context, projectID uint32, limit, offset int) (*ListTagsResponse, error)
 	Update(ctx context.Context, projectID uint32, tagID int, req *UpdateTagRequest) error
 	Delete(ctx context.Context, projectID uint32, tagID int) error
 }
 
 type tagServiceImpl struct {
-	log    logger.Logger
-	pgconn pool.Pool
+	log        logger.Logger
+	pgconn     pool.Pool
+	chconn     clickhouse.Conn
+	statsCache cache.Cache
 }
 
-func NewTagService(log logger.Logger, pgconn pool.Pool) TagService {
+func NewTagService(log logger.Logger, pgconn pool.Pool, chconn clickhouse.Conn) TagService {
 	return &tagServiceImpl{
-		log:    log,
-		pgconn: pgconn,
+		log:        log,
+		pgconn:     pgconn,
+		chconn:     chconn,
+		statsCache: cache.New(time.Minute*30, time.Hour),
 	}
 }
 
@@ -53,25 +60,28 @@ func (s *tagServiceImpl) Create(ctx context.Context, projectID uint32, req *Crea
 	return tagID, nil
 }
 
-func (s *tagServiceImpl) List(ctx context.Context, projectID uint32) ([]TagResponse, error) {
+func (s *tagServiceImpl) List(ctx context.Context, projectID uint32, limit, offset int) (*ListTagsResponse, error) {
 	const query = `
-		SELECT tag_id, name, selector, ignore_click_rage, ignore_dead_click, location
+		SELECT tag_id, name, selector, ignore_click_rage, ignore_dead_click, location,
+		       COUNT(*) OVER() AS total
 		FROM public.tags
 		WHERE project_id = $1 AND deleted_at IS NULL
 		ORDER BY name
+		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := s.pgconn.Query(query, projectID)
+	rows, err := s.pgconn.Query(query, projectID, limit, offset)
 	if err != nil {
 		s.log.Error(ctx, "failed to list tags: %s", err)
 		return nil, fmt.Errorf("list tags: %s", err)
 	}
 	defer rows.Close()
 
+	var total int
 	tags := make([]TagResponse, 0)
 	for rows.Next() {
 		var t TagResponse
-		if err := rows.Scan(&t.TagID, &t.Name, &t.Selector, &t.IgnoreClickRage, &t.IgnoreDeadClick, &t.Location); err != nil {
+		if err := rows.Scan(&t.TagID, &t.Name, &t.Selector, &t.IgnoreClickRage, &t.IgnoreDeadClick, &t.Location, &total); err != nil {
 			s.log.Error(ctx, "failed to scan tag row: %s", err)
 			return nil, fmt.Errorf("scan tag: %s", err)
 		}
@@ -81,7 +91,66 @@ func (s *tagServiceImpl) List(ctx context.Context, projectID uint32) ([]TagRespo
 		s.log.Error(ctx, "failed to iterate tag rows: %s", err)
 		return nil, fmt.Errorf("iterate tags: %s", err)
 	}
-	return tags, nil
+
+	statsMap := s.getTagStats(ctx, projectID)
+	for i := range tags {
+		if stats, ok := statsMap[tags[i].TagID]; ok {
+			tags[i].Volume = stats.Volume
+			tags[i].Users = stats.UniqueUsers
+		}
+	}
+
+	return &ListTagsResponse{Tags: tags, Total: total}, nil
+}
+
+func (s *tagServiceImpl) getTagStats(ctx context.Context, projectID uint32) map[int]TagStats {
+	cacheKey := fmt.Sprintf("tag_stats:%d", projectID)
+
+	if cached, ok := s.statsCache.GetAndRefresh(cacheKey); ok {
+		if statsMap, ok := cached.(map[int]TagStats); ok {
+			return statsMap
+		}
+	}
+
+	const query = `
+		SELECT
+			toInt64("$properties"."tag_id") AS tag_id,
+			COUNT(*) AS volume,
+			COUNT(DISTINCT distinct_id) AS unique_users
+		FROM product_analytics.events
+		WHERE project_id = $1
+		  AND "$event_name" = 'TAG_TRIGGER'
+		  AND created_at >= now() - INTERVAL 24 HOUR
+		GROUP BY tag_id
+	`
+
+	statsMap := make(map[int]TagStats)
+
+	rows, err := s.chconn.Query(ctx, query, uint16(projectID))
+	if err != nil {
+		s.log.Error(ctx, "failed to query tag stats from clickhouse: %.200s", err)
+		return statsMap
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tagID int64
+		var volume, uniqueUsers uint64
+		if err := rows.Scan(&tagID, &volume, &uniqueUsers); err != nil {
+			s.log.Error(ctx, "failed to scan tag stats row: %.200s", err)
+			continue
+		}
+		statsMap[int(tagID)] = TagStats{
+			Volume:      int64(volume),
+			UniqueUsers: int64(uniqueUsers),
+		}
+	}
+	if err := rows.Err(); err != nil {
+		s.log.Error(ctx, "failed to iterate tag stats rows: %.200s", err)
+	}
+
+	s.statsCache.Set(cacheKey, statsMap)
+	return statsMap
 }
 
 func (s *tagServiceImpl) Update(ctx context.Context, projectID uint32, tagID int, req *UpdateTagRequest) error {

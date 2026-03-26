@@ -20,4 +20,16 @@ type TagResponse struct {
 	IgnoreClickRage bool    `json:"ignoreClickRage"`
 	IgnoreDeadClick bool    `json:"ignoreDeadClick"`
 	Location        *string `json:"location"`
+	Volume          int64   `json:"volume"`
+	Users           int64   `json:"users"`
+}
+
+type ListTagsResponse struct {
+	Tags  []TagResponse `json:"tags"`
+	Total int           `json:"total"`
+}
+
+type TagStats struct {
+	Volume      int64
+	UniqueUsers int64
 }

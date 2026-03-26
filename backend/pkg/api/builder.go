@@ -209,7 +209,7 @@ func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web
 		return nil, err
 	}
 
-	tagAdminService := tagAdmin.NewTagService(log, pgconn)
+	tagAdminService := tagAdmin.NewTagService(log, pgconn, chconn)
 	tagAdminHandlers, err := tagAdmin.NewHandlers(log, requestHandler, tagAdminService)
 	if err != nil {
 		return nil, err
