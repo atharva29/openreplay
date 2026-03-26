@@ -1,3 +1,7 @@
+## 17.2.5
+
+- check elements to be connected to tree in webAnimation listener
+
 ## 17.2.4
 
 - fixes for sdk batcher to prevent empty fetches (or token resets)
