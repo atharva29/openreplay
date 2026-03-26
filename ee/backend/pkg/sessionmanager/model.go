@@ -10,7 +10,8 @@ const (
 type FilterType string
 
 const (
-	UserID          FilterType = "userId"
+	SessionID       FilterType = "sessionId"
+	UserID                     = "userId"
 	UserAnonymousID            = "userAnonymousId"
 	UserOS                     = "userOs"
 	UserBrowser                = "userBrowser"

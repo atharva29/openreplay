@@ -453,6 +453,8 @@ func matchesFilters(session *SessionData, filters []*Filter, counter map[string]
 		var value string
 
 		switch filter.Type {
+		case SessionID:
+			value = session.SessionID
 		case UserID:
 			if session.UserID != nil {
 				value = *session.UserID
