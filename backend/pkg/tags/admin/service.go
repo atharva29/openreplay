@@ -120,7 +120,7 @@ func (s *tagServiceImpl) getTagStats(ctx context.Context, projectID uint32) map[
 		FROM product_analytics.events
 		WHERE project_id = $1
 		  AND "$event_name" = 'TAG_TRIGGER'
-		  AND created_at >= now() - INTERVAL 24 HOUR
+		  AND created_at >= now() - INTERVAL 7 DAY
 		GROUP BY tag_id
 	`
 
