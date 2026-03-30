@@ -1,3 +1,7 @@
+## 17.2.6
+
+- improvements for crossdomain iframe communication and token reassignment
+
 ## 17.2.5
 
 - check elements to be connected to tree in webAnimation listener
