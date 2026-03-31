@@ -291,6 +291,26 @@ type UserActivityResponse struct {
 	Events []UserEvent `json:"events"`
 }
 
+type UserSessionsRequest struct {
+	StartDate int64                 `json:"startTimestamp" validate:"required,min=946684800000"`
+	EndDate   int64                 `json:"endTimestamp" validate:"required,min=946684800000,gtfield=StartDate"`
+	Limit     int                   `json:"limit" validate:"omitempty,min=1,max=200"`
+	Page      int                   `json:"page" validate:"omitempty,min=1"`
+	SortOrder filters.SortOrderType `json:"sortOrder" validate:"omitempty,oneof=asc desc"`
+}
+
+type UserSession struct {
+	SessionID   uint64 `json:"sessionId,string"`
+	EventsCount uint64 `json:"eventsCount"`
+	StartTs     int64  `json:"startTs"`
+	EndTs       int64  `json:"endTs"`
+}
+
+type UserSessionsResponse struct {
+	Total    uint64        `json:"total"`
+	Sessions []UserSession `json:"sessions"`
+}
+
 func GetFieldPointer(user *UserRequest, column string) interface{} {
 	if column == "project_id" {
 		return &user.ProjectID

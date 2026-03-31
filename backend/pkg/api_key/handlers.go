@@ -1,51 +1,369 @@
 package api_key
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
-	"openreplay/backend/internal/config/common"
+
+	"openreplay/backend/pkg/analytics/events"
+	eventsModel "openreplay/backend/pkg/analytics/events/model"
+	"openreplay/backend/pkg/analytics/filters"
+	"openreplay/backend/pkg/analytics/users"
+	usersModel "openreplay/backend/pkg/analytics/users/model"
+	"openreplay/backend/pkg/jobs"
 	"openreplay/backend/pkg/logger"
 	"openreplay/backend/pkg/projects"
 	"openreplay/backend/pkg/server/api"
-	"time"
 )
 
+const maxProjectNameLength = 200
+
 type handlersImpl struct {
-	log           logger.Logger
-	responser     api.Responser
-	projects      projects.Projects
-	jsonSizeLimit int64
+	log      logger.Logger
+	projects projects.Projects
+	users    users.Users
+	events   events.Events
+	jobs     jobs.Jobs
+	handlers []*api.Description
 }
 
-func NewHandlers(log logger.Logger, cfg *common.HTTP, responser api.Responser, projects projects.Projects) (api.Handlers, error) {
-	return &handlersImpl{
-		log:           log,
-		responser:     responser,
-		jsonSizeLimit: cfg.JsonSizeLimit,
-		projects:      projects,
-	}, nil
+func NewHandlers(log logger.Logger, req api.RequestHandler, projects projects.Projects, users users.Users, events events.Events, jobsService jobs.Jobs) (api.Handlers, error) {
+	h := &handlersImpl{
+		log:      log,
+		projects: projects,
+		users:    users,
+		events:   events,
+		jobs:     jobsService,
+	}
+	h.handlers = []*api.Description{
+		{"/v1/projects/{project}", "GET", req.Handle(h.getProject), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects", "GET", req.Handle(h.listProjects), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects", "POST", req.HandleWithBody(h.createProject), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/users", "POST", req.HandleWithBody(h.searchUsers), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/users/{userID}", "GET", req.Handle(h.getUser), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/users/{userID}/sessions", "POST", req.HandleWithBody(h.getUserSessions), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/sessions/{sessionID}/events", "POST", req.HandleWithBody(h.searchEventsBySession), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/users/{userID}", "DELETE", req.Handle(h.deleteUserData), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/jobs", "GET", req.Handle(h.listJobs), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/jobs/{jobID}", "GET", req.Handle(h.getJob), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/jobs/{jobID}", "DELETE", req.Handle(h.cancelJob), []string{api.PublicKeyPermission}, api.DoNotTrack},
+	}
+	return h, nil
 }
 
 func (h *handlersImpl) GetAll() []*api.Description {
-	return []*api.Description{
-		{"/v1/projects/{project}", "GET", h.getProject, []string{api.PublicKeyPermission}, api.DoNotTrack},
-	}
+	return h.handlers
 }
 
-func (h *handlersImpl) getProject(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	bodySize := 0
-
-	projectKey, err := api.GetParam(r, "project")
+func (h *handlersImpl) resolveProjectID(r *api.RequestContext) (uint32, int, error) {
+	projectKey, err := api.GetParam(r.Request, "project")
 	if err != nil {
-		h.responser.ResponseWithError(h.log, r.Context(), w, http.StatusBadRequest, err, startTime, r.URL.Path, bodySize)
-		return
+		return 0, http.StatusBadRequest, err
 	}
 
-	project, err := h.projects.GetProjectByKey(string(projectKey))
+	tenantID, err := api.GetTenantID(r.Request)
 	if err != nil {
-		h.responser.ResponseWithError(h.log, r.Context(), w, http.StatusNotFound, err, startTime, r.URL.Path, bodySize)
-		return
+		return 0, http.StatusUnauthorized, err
 	}
 
-	h.responser.ResponseWithJSON(h.log, r.Context(), w, map[string]interface{}{"data": project}, startTime, r.URL.Path, bodySize)
+	project, err := h.projects.GetProjectByKeyAndTenant(projectKey, tenantID)
+	if err != nil {
+		return 0, http.StatusNotFound, fmt.Errorf("project not found")
+	}
+
+	return project.ProjectID, 0, nil
+}
+
+func (h *handlersImpl) getProject(r *api.RequestContext) (any, int, error) {
+	projectKey, err := api.GetParam(r.Request, "project")
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	tenantID, err := api.GetTenantID(r.Request)
+	if err != nil {
+		return nil, http.StatusUnauthorized, err
+	}
+
+	project, err := h.projects.GetProjectByKeyAndTenant(projectKey, tenantID)
+	if err != nil {
+		return nil, http.StatusNotFound, fmt.Errorf("project not found")
+	}
+
+	return project, 0, nil
+}
+
+func (h *handlersImpl) listProjects(r *api.RequestContext) (any, int, error) {
+	tenantID, err := api.GetTenantID(r.Request)
+	if err != nil {
+		return nil, http.StatusUnauthorized, err
+	}
+
+	projectList, err := h.projects.ListProjectsByTenantID(tenantID)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to list projects: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to list projects")
+	}
+
+	return projectList, 0, nil
+}
+
+type createProjectRequest struct {
+	Name     string `json:"name"`
+	Platform string `json:"platform"`
+}
+
+func (h *handlersImpl) createProject(r *api.RequestContext) (any, int, error) {
+	tenantID, err := api.GetTenantID(r.Request)
+	if err != nil {
+		return nil, http.StatusUnauthorized, err
+	}
+
+	var req createProjectRequest
+	if err := json.Unmarshal(r.Body, &req); err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid JSON body")
+	}
+
+	if req.Name == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("name is required")
+	}
+	if len(req.Name) > maxProjectNameLength {
+		return nil, http.StatusBadRequest, fmt.Errorf("name must be at most %d characters", maxProjectNameLength)
+	}
+
+	if req.Platform == "" {
+		req.Platform = "web"
+	}
+	if !projects.ValidPlatforms[req.Platform] {
+		return nil, http.StatusBadRequest, fmt.Errorf("platform must be one of: web, ios, android")
+	}
+
+	exists, err := h.projects.ExistsByName(req.Name, tenantID)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to check project name: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to create project")
+	}
+	if exists {
+		return nil, http.StatusBadRequest, fmt.Errorf("name already exists")
+	}
+
+	project, err := h.projects.CreateProject(tenantID, req.Name, req.Platform)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to create project: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to create project")
+	}
+
+	return project, 0, nil
+}
+
+func (h *handlersImpl) searchUsers(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	req := &usersModel.SearchUsersRequest{}
+	if err := json.Unmarshal(r.Body, req); err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid JSON body")
+	}
+
+	if query := r.Request.URL.Query().Get("q"); query != "" {
+		req.Query = query
+	}
+
+	if err := filters.ValidateStruct(req); err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	response, err := h.users.SearchUsers(r.Request.Context(), projID, req)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to search users: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to search users")
+	}
+
+	return response, 0, nil
+}
+
+func (h *handlersImpl) getUser(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	userID, err := api.GetPathParam(r.Request, "userID", api.ParseString)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if userID == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("userID cannot be empty")
+	}
+	if len(userID) > 256 {
+		return nil, http.StatusBadRequest, fmt.Errorf("userID exceeds maximum length of 256 characters")
+	}
+
+	response, err := h.users.GetByUserID(r.Request.Context(), projID, userID)
+	if err != nil {
+		return nil, http.StatusNotFound, fmt.Errorf("user not found")
+	}
+
+	return response, 0, nil
+}
+
+func (h *handlersImpl) getUserSessions(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	userID, err := api.GetPathParam(r.Request, "userID", api.ParseString)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if userID == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("userID cannot be empty")
+	}
+	if len(userID) > 256 {
+		return nil, http.StatusBadRequest, fmt.Errorf("userID exceeds maximum length of 256 characters")
+	}
+
+	req := &usersModel.UserSessionsRequest{}
+	if err := json.Unmarshal(r.Body, req); err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid JSON body")
+	}
+
+	if err := filters.ValidateStruct(req); err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	response, err := h.users.GetUserSessions(r.Request.Context(), projID, userID, req)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to get user sessions: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to get user sessions")
+	}
+
+	return response, 0, nil
+}
+
+func (h *handlersImpl) searchEventsBySession(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	sessionID, err := api.GetPathParam(r.Request, "sessionID", api.ParseString)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if sessionID == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("sessionID cannot be empty")
+	}
+	if len(sessionID) > 256 {
+		return nil, http.StatusBadRequest, fmt.Errorf("sessionID exceeds maximum length of 256 characters")
+	}
+
+	req := &eventsModel.EventsSearchRequest{}
+	if err := json.Unmarshal(r.Body, req); err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid JSON body")
+	}
+
+	req.Filters = append(req.Filters, filters.Filter{
+		Name:     "session_id",
+		Operator: "is",
+		Value:    []string{sessionID},
+	})
+
+	if err := filters.ValidateStruct(req); err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	response, err := h.events.SearchEvents(r.Request.Context(), projID, req)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to search events: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to search events")
+	}
+
+	return response, 0, nil
+}
+
+func (h *handlersImpl) deleteUserData(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	userID, err := api.GetPathParam(r.Request, "userID", api.ParseString)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if userID == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("userID cannot be empty")
+	}
+	if len(userID) > 256 {
+		return nil, http.StatusBadRequest, fmt.Errorf("userID exceeds maximum length of 256 characters")
+	}
+
+	job, err := h.jobs.Create(projID, userID)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to schedule user deletion: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to schedule user deletion")
+	}
+
+	return job, 0, nil
+}
+
+func (h *handlersImpl) listJobs(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	jobsList, err := h.jobs.GetAll(projID)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to list jobs: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to list jobs")
+	}
+
+	return jobsList, 0, nil
+}
+
+func (h *handlersImpl) getJob(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	jobID, err := api.GetPathParam(r.Request, "jobID", api.ParseInt)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	job, err := h.jobs.Get(jobID, projID)
+	if err != nil {
+		return nil, http.StatusNotFound, fmt.Errorf("job not found")
+	}
+
+	return job, 0, nil
+}
+
+func (h *handlersImpl) cancelJob(r *api.RequestContext) (any, int, error) {
+	projID, statusCode, err := h.resolveProjectID(r)
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	jobID, err := api.GetPathParam(r.Request, "jobID", api.ParseInt)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	job, err := h.jobs.Cancel(jobID, projID)
+	if err != nil {
+		if errors.Is(err, jobs.ErrJobNotFound) {
+			return nil, http.StatusNotFound, fmt.Errorf("job not found")
+		}
+		return nil, http.StatusBadRequest, fmt.Errorf("%s", err)
+	}
+
+	return job, 0, nil
 }

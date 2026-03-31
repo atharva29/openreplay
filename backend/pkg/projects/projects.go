@@ -17,6 +17,9 @@ type Projects interface {
 	GetProjectByKey(projectKey string) (*Project, error)
 	GetProjectByKeyAndTenant(projectKey string, tenantId int) (*Project, error)
 	GetProjectNotDeleted(projectID uint32) (*Project, error)
+	ListProjectsByTenantID(tenantID int) ([]*Project, error)
+	ExistsByName(name string, tenantID int) (bool, error)
+	CreateProject(tenantID int, name string, platform string) (*Project, error)
 }
 
 type projectsImpl struct {

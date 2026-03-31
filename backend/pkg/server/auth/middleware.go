@@ -8,6 +8,7 @@ import (
 	ctxStore "github.com/docker/distribution/context"
 
 	"openreplay/backend/pkg/server/api"
+	tenant2 "openreplay/backend/pkg/server/tenant"
 	user2 "openreplay/backend/pkg/server/user"
 )
 
@@ -21,20 +22,23 @@ func (a *authImpl) Middleware(next http.Handler) http.Handler {
 		}
 
 		if a.isApiKeyRequest(r) {
-			projectKey, err := api.GetParam(r, "project")
-			if err != nil {
-				a.log.Warn(r.Context(), "Unauthorized request, missing project key: %s", err)
-				w.WriteHeader(http.StatusUnauthorized)
-				return
+			projectKey, _ := api.GetParam(r, "project")
+			var (
+				dbTenant *tenant2.Tenant
+				authErr  error
+			)
+			if projectKey != "" {
+				dbTenant, authErr = a.isAuthorizedApiKey(tokenString, projectKey)
+			} else {
+				dbTenant, authErr = a.isAuthorizedApiKeyOnly(tokenString)
 			}
-			tenant, err := a.isAuthorizedApiKey(tokenString, projectKey)
-			if err != nil {
-				a.log.Warn(r.Context(), "Unauthorized request, wrong api key: %s", err)
+			if authErr != nil {
+				a.log.Warn(r.Context(), "Unauthorized request, wrong api key: %s", authErr)
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
 
-			r = r.WithContext(ctxStore.WithValues(r.Context(), map[string]interface{}{"tenantData": tenant}))
+			r = r.WithContext(ctxStore.WithValues(r.Context(), map[string]interface{}{"tenantData": dbTenant}))
 			next.ServeHTTP(w, r)
 			return
 		}

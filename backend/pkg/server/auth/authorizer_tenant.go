@@ -21,13 +21,19 @@ func (a *authImpl) isAuthorizedApiKey(apiKey string, projectKey string) (*tenant
 		return nil, err
 	}
 
-	_, err = a.projects.GetProjectByKey(projectKey)
+	_, err = a.projects.GetProjectByKeyAndTenant(projectKey, dbTenant.TenantID)
 	if err != nil {
-		a.log.Warn(nil, "Unauthorized request, wrong api key: %s", a)
-		return nil, err
+		return nil, fmt.Errorf("project not found or does not belong to this tenant")
 	}
 
 	return dbTenant, nil
+}
+
+func (a *authImpl) isAuthorizedApiKeyOnly(apiKey string) (*tenant.Tenant, error) {
+	if a.tenants == nil {
+		return nil, fmt.Errorf("tenants service is not configured")
+	}
+	return a.tenants.GetTenantByApiKey(apiKey)
 }
 
 func (a *authImpl) validateProjectAccess(r *http.Request, u *user.User) error {

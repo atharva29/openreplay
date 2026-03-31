@@ -20,6 +20,7 @@ import (
 	"openreplay/backend/pkg/analytics/users"
 	usersAPI "openreplay/backend/pkg/analytics/users/api"
 	"openreplay/backend/pkg/api_key"
+	"openreplay/backend/pkg/jobs"
 	"openreplay/backend/pkg/assist/proxy"
 	"openreplay/backend/pkg/canvas"
 	"openreplay/backend/pkg/conditions"
@@ -131,6 +132,8 @@ func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web
 		return nil, err
 	}
 
+	jobsService := jobs.New(log, pgconn)
+
 	favService, err := favorite.New(log, pgconn, chconn, objStore)
 	if err != nil {
 		return nil, err
@@ -154,7 +157,7 @@ func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web
 		return nil, err
 	}
 
-	apiKeyHandlers, err := api_key.NewHandlers(log, &cfg.HTTP, responser, projects)
+	apiKeyHandlers, err := api_key.NewHandlers(log, requestHandler, projects, usersService, analyticsEventsService, jobsService)
 	if err != nil {
 		return nil, err
 	}
