@@ -318,7 +318,16 @@ func (h *handlersImpl) listJobs(r *api.RequestContext) (any, int, error) {
 		return nil, statusCode, err
 	}
 
-	jobsList, err := h.jobs.GetAll(projID)
+	limit := api.GetQueryParam(r.Request, "limit", api.ParseInt, 50)
+	page := api.GetQueryParam(r.Request, "page", api.ParseInt, 1)
+	if limit < 1 || limit > 200 {
+		limit = 50
+	}
+	if page < 1 {
+		page = 1
+	}
+
+	jobsList, err := h.jobs.GetAll(projID, limit, page)
 	if err != nil {
 		h.log.Error(r.Request.Context(), "failed to list jobs: %s", err)
 		return nil, http.StatusInternalServerError, fmt.Errorf("failed to list jobs")

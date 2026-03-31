@@ -8,7 +8,7 @@ import (
 type Jobs interface {
 	Create(projectID uint32, userID string) (*Job, error)
 	Get(jobID int, projectID uint32) (*Job, error)
-	GetAll(projectID uint32) ([]*Job, error)
+	GetAll(projectID uint32, limit int, page int) ([]*Job, error)
 	Cancel(jobID int, projectID uint32) (*Job, error)
 	ExecuteScheduledJobs() error
 }

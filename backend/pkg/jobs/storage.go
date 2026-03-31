@@ -82,13 +82,15 @@ func (j *jobsImpl) Get(jobID int, projectID uint32) (*Job, error) {
 	}, nil
 }
 
-func (j *jobsImpl) GetAll(projectID uint32) ([]*Job, error) {
+func (j *jobsImpl) GetAll(projectID uint32, limit int, page int) ([]*Job, error) {
+	offset := (page - 1) * limit
 	rows, err := j.db.Query(`
 		SELECT job_id, description, status, action, reference_id, created_at, updated_at, start_at, errors
 		FROM public.jobs
 		WHERE project_id = $1
 		ORDER BY job_id DESC
-	`, projectID)
+		LIMIT $2 OFFSET $3
+	`, projectID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
