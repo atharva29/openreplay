@@ -80,6 +80,9 @@ function UserList(props: Props) {
                     e.stopPropagation();
                     userStore.copyInviteCode(user.userId);
                   }}
+                  onMakeOwner={(userId) => {
+                    userStore.makeOwner(userId);
+                  }}
                   isEnterprise={isEnterprise}
                   isOnboarding={isOnboarding}
                 />

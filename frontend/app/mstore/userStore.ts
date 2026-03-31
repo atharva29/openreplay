@@ -269,6 +269,24 @@ class UserStore {
     });
   };
 
+  makeOwner = async (userId: string) => {
+    this.saving = true;
+    try {
+      await userService.makeOwner(userId);
+      runInAction(() => {
+        toast.success(this.t('Ownership transferred successfully'));
+      });
+      await this.fetchUsers();
+      await this.fetchUserInfo();
+    } catch (error: any) {
+      toast.error(error.message || this.t('Failed to transfer ownership'));
+    } finally {
+      runInAction(() => {
+        this.saving = false;
+      });
+    }
+  };
+
   copyInviteCode = (userId: string): void => {
     const content = this.list.find((u) => u.userId === userId)?.invitationLink;
     if (content) {

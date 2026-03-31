@@ -211,6 +211,13 @@ export default class UserService {
       .then((response: { data: any }) => response.data || {});
   }
 
+  makeOwner(userId: string) {
+    return this.client
+      .put(`/client/members/${userId}/owner`)
+      .then((r) => r.json())
+      .then((response: { data: any }) => response.data || {});
+  }
+
   changeScope(scope: 1 | 2) {
     return this.client
       .post('/account/scope', { scope })

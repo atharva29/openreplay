@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from 'react';
-import { Tooltip, Icon } from 'UI';
+import { Tooltip, Icon, confirm } from 'UI';
 import { Button } from 'antd';
 import { checkForRecent } from 'App/date';
 import cn from 'classnames';
@@ -35,6 +35,7 @@ interface Props {
   generateInvite?: any;
   copyInviteCode?: any;
   isEnterprise?: boolean;
+  onMakeOwner?: (userId: string) => void;
 }
 function UserListItem(props: Props) {
   const {
@@ -44,8 +45,25 @@ function UserListItem(props: Props) {
     copyInviteCode = () => {},
     isEnterprise = false,
     isOnboarding = false,
+    onMakeOwner,
   } = props;
   const { t } = useTranslation();
+
+  const handleMakeOwner = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (
+      await confirm({
+        header: t('Transfer Ownership'),
+        confirmButton: t('Yes, transfer'),
+        confirmation: t(
+          'There can only be one owner account. By proceeding, the ownership will be transferred to {{name}}. You will lose your owner privileges.',
+          { name: user.name },
+        ),
+      })
+    ) {
+      onMakeOwner?.(user.userId);
+    }
+  };
 
   return (
     <div
@@ -91,28 +109,36 @@ function UserListItem(props: Props) {
           },
         )}
       >
-        <div className="grid grid-cols-2 gap-3 items-center justify-end">
-          <div>
-            {!user.isJoined && user.invitationLink && !user.isExpiredInvite && (
-              <Tooltip title={t('Copy Invite Code')} hideOnClick>
-                <Button
-                  type="text"
-                  icon={<Icon name="link-45deg" />}
-                  onClick={copyInviteCode}
-                />
-              </Tooltip>
-            )}
+        <div className="flex gap-2 items-center justify-end">
+          {!user.isJoined && user.invitationLink && !user.isExpiredInvite && (
+            <Tooltip title={t('Copy Invite Code')} hideOnClick>
+              <Button
+                type="text"
+                icon={<Icon name="link-45deg" />}
+                onClick={copyInviteCode}
+              />
+            </Tooltip>
+          )}
 
-            {!user.isJoined && user.isExpiredInvite && (
-              <Tooltip title={t('Generate Invite')} hideOnClick>
-                <Button
-                  icon={<Icon name="link-45deg" />}
-                  variant="text"
-                  onClick={generateInvite}
-                />
-              </Tooltip>
-            )}
-          </div>
+          {!user.isJoined && user.isExpiredInvite && (
+            <Tooltip title={t('Generate Invite')} hideOnClick>
+              <Button
+                icon={<Icon name="link-45deg" />}
+                variant="text"
+                onClick={generateInvite}
+              />
+            </Tooltip>
+          )}
+
+          {!user.isSuperAdmin && onMakeOwner && (
+            <Tooltip title={t('Make Owner')}>
+              <Button
+                type="text"
+                icon={<Icon name="user-switch" />}
+                onClick={handleMakeOwner}
+              />
+            </Tooltip>
+          )}
           <Button variant="text" icon={<Icon name="pencil" />} />
         </div>
       </div>
