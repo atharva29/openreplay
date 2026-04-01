@@ -4,7 +4,24 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"openreplay/backend/pkg/db/postgres"
 )
+
+func (j *jobsImpl) HasActiveJob(projectID uint32, userID string) (bool, error) {
+	var exists bool
+	err := j.db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM public.jobs
+			WHERE project_id = $1 AND reference_id = $2
+				AND status IN ('scheduled', 'running')
+		)
+	`, projectID, userID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check active jobs: %w", err)
+	}
+	return exists, nil
+}
 
 func (j *jobsImpl) Create(projectID uint32, userID string) (*Job, error) {
 	startAt := midnightTomorrowUTC()
@@ -153,11 +170,14 @@ func (j *jobsImpl) Cancel(jobID int, projectID uint32) (*Job, error) {
 	`, StatusCancelled, jobID, projectID,
 	).Scan(&desc, &status, &action, &referenceID, &createdAt, &updatedAt, &startAt, &errorsCol)
 	if err != nil {
-		existing, getErr := j.Get(jobID, projectID)
-		if getErr != nil {
-			return nil, ErrJobNotFound
+		if postgres.IsNoRowsErr(err) {
+			existing, getErr := j.Get(jobID, projectID)
+			if getErr != nil {
+				return nil, ErrJobNotFound
+			}
+			return nil, fmt.Errorf("the requested job has already been %s", existing.Status)
 		}
-		return nil, fmt.Errorf("the requested job has already been %s", existing.Status)
+		return nil, fmt.Errorf("failed to cancel job: %w", err)
 	}
 
 	return &Job{
@@ -238,22 +258,11 @@ func (j *jobsImpl) executeJob(job *Job) {
 		return
 	}
 
-	sessionIDs, err := j.getSessionIDsByUserID(job.ProjectID, job.ReferenceID)
-	if err != nil {
-		errMsg := fmt.Sprintf("failed to get sessions: %v", err)
+	if err := j.deleteUserSessionsInBatches(ctx, job.ProjectID, job.ReferenceID, job.JobID); err != nil {
+		errMsg := fmt.Sprintf("failed to delete sessions: %v", err)
 		j.log.Error(ctx, errMsg)
 		j.updateJobStatus(job.JobID, StatusFailed, &errMsg)
 		return
-	}
-
-	if len(sessionIDs) > 0 {
-		j.log.Info(ctx, "deleting %d sessions for jobId:%d", len(sessionIDs), job.JobID)
-		if err := j.deleteSessionsByIDs(sessionIDs); err != nil {
-			errMsg := fmt.Sprintf("failed to delete sessions: %v", err)
-			j.log.Error(ctx, errMsg)
-			j.updateJobStatus(job.JobID, StatusFailed, &errMsg)
-			return
-		}
 	}
 
 	j.log.Info(ctx, "job completed jobId:%d", job.JobID)
@@ -270,13 +279,34 @@ func (j *jobsImpl) updateJobStatus(jobID int, status string, errMsg *string) {
 	}
 }
 
-func (j *jobsImpl) getSessionIDsByUserID(projectID uint32, userID string) ([]int64, error) {
+const deletionBatchSize = 1000
+
+func (j *jobsImpl) deleteUserSessionsInBatches(ctx context.Context, projectID uint32, userID string, jobID int) error {
+	for {
+		ids, err := j.getSessionIDsByUserID(projectID, userID, deletionBatchSize)
+		if err != nil {
+			return fmt.Errorf("failed to get sessions: %w", err)
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		j.log.Info(ctx, "deleting %d sessions for jobId:%d", len(ids), jobID)
+		if err := j.deleteSessionsByIDs(ids); err != nil {
+			return fmt.Errorf("failed to delete sessions: %w", err)
+		}
+		if len(ids) < deletionBatchSize {
+			return nil
+		}
+	}
+}
+
+func (j *jobsImpl) getSessionIDsByUserID(projectID uint32, userID string, limit int) ([]int64, error) {
 	rows, err := j.db.Query(`
 		SELECT session_id
 		FROM public.sessions
 		WHERE project_id = $1 AND user_id = $2
-		LIMIT 1000
-	`, projectID, userID)
+		LIMIT $3
+	`, projectID, userID, limit)
 	if err != nil {
 		return nil, err
 	}

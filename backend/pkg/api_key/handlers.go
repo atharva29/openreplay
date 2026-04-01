@@ -303,6 +303,15 @@ func (h *handlersImpl) deleteUserData(r *api.RequestContext) (any, int, error) {
 		return nil, http.StatusBadRequest, fmt.Errorf("userID exceeds maximum length of 256 characters")
 	}
 
+	active, err := h.jobs.HasActiveJob(projID, userID)
+	if err != nil {
+		h.log.Error(r.Request.Context(), "failed to check active jobs: %s", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to schedule user deletion")
+	}
+	if active {
+		return nil, http.StatusConflict, fmt.Errorf("a deletion job for this user is already scheduled or running")
+	}
+
 	job, err := h.jobs.Create(projID, userID)
 	if err != nil {
 		h.log.Error(r.Request.Context(), "failed to schedule user deletion: %s", err)

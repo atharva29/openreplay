@@ -6,6 +6,7 @@ import (
 )
 
 type Jobs interface {
+	HasActiveJob(projectID uint32, userID string) (bool, error)
 	Create(projectID uint32, userID string) (*Job, error)
 	Get(jobID int, projectID uint32) (*Job, error)
 	GetAll(projectID uint32, limit int, page int) ([]*Job, error)
