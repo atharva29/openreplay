@@ -10,7 +10,7 @@ type Jobs interface {
 	Get(jobID int, projectID uint32) (*Job, error)
 	GetAll(projectID uint32, limit int, page int) ([]*Job, error)
 	Cancel(jobID int, projectID uint32) (*Job, error)
-	ExecuteScheduledJobs() error
+	ExecuteScheduledJobs() error // TODO: currently executed by Python cron (app_crons.py JOB), wire to Go scheduler when Python API is retired
 }
 
 type jobsImpl struct {
