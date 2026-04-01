@@ -136,7 +136,7 @@ func (h *handlersImpl) createProject(r *api.RequestContext) (any, int, error) {
 		req.Platform = "web"
 	}
 	if !projects.ValidPlatforms[req.Platform] {
-		return nil, http.StatusBadRequest, fmt.Errorf("platform must be one of: web, ios, android")
+		return nil, http.StatusBadRequest, fmt.Errorf("platform must be one of: web, ios")
 	}
 
 	exists, err := h.projects.ExistsByName(req.Name, tenantID)

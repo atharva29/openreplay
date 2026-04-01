@@ -60,9 +60,8 @@ func (p *Project) GetMetadataNo(key string) uint {
 }
 
 var ValidPlatforms = map[string]bool{
-	"web":     true,
-	"ios":     true,
-	"android": true,
+	"web": true,
+	"ios": true,
 }
 
 func (p *Project) IsMobile() bool {
