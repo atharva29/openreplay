@@ -72,7 +72,7 @@ PREDEFINED_EVENTS_MOBILE = {
     },
 }
 
-EXCLUDED_EVENTS = ["CUSTOM"]
+EXCLUDED_EVENTS = ["CUSTOM", "TAG_TRIGGER"]
 
 cache = TTLCache(maxsize=1000, ttl=60)
 

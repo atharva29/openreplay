@@ -40,6 +40,7 @@ import (
 	"openreplay/backend/pkg/server/api"
 	"openreplay/backend/pkg/session"
 	sessionAPI "openreplay/backend/pkg/session/api"
+	tagAdmin "openreplay/backend/pkg/tags/admin"
 	"openreplay/backend/pkg/views"
 )
 
@@ -59,11 +60,12 @@ type serviceBuilder struct {
 	savedSearchesAPI   api.Handlers
 	usersAPI           api.Handlers
 	lexiconAPI         api.Handlers
+	tagsAdminAPI       api.Handlers
 }
 
 func (b *serviceBuilder) Handlers() []api.Handlers {
 	return []api.Handlers{b.sessionAPI, b.eventAPI, b.analyticsEventsAPI, b.favoriteAPI, b.noteAPI, b.replayAPI, b.apiKeyAPI, b.conditionsAPI,
-		b.chartsAPI, b.dashboardsAPI, b.cardsAPI, b.searchAPI, b.savedSearchesAPI, b.usersAPI, b.lexiconAPI}
+		b.chartsAPI, b.dashboardsAPI, b.cardsAPI, b.searchAPI, b.savedSearchesAPI, b.usersAPI, b.lexiconAPI, b.tagsAdminAPI}
 }
 
 func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web, pgconn pool.Pool, chconn clickhouse.Conn, objStore objectstorage.ObjectStorage, projects projects.Projects, canvases canvas.Canvases) (api.ServiceBuilder, error) {
@@ -207,6 +209,12 @@ func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web
 		return nil, err
 	}
 
+	tagAdminService := tagAdmin.NewTagService(log, pgconn, chconn)
+	tagAdminHandlers, err := tagAdmin.NewHandlers(log, requestHandler, tagAdminService)
+	if err != nil {
+		return nil, err
+	}
+
 	return &serviceBuilder{
 		sessionAPI:         sessionHandlers,
 		eventAPI:           eventHandlers,
@@ -223,5 +231,6 @@ func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web
 		savedSearchesAPI:   savedSearchesHandlers,
 		usersAPI:           usersHandlers,
 		lexiconAPI:         lexiconHandlers,
+		tagsAdminAPI:       tagAdminHandlers,
 	}, nil
 }
