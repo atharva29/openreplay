@@ -23,6 +23,12 @@ metadata:
       
       # Debug headers
       add_header 'X-Debug-Session-ID' $sessionid always;
+      {{- if .Values.ingress.stripCookies }}
+      # Strip cookies before proxying — assist authenticates via JWT
+      # (Authorization header), not cookies. Reduces header size and
+      # helps prevent HTTP 431 from uWebSockets.js (4KB default limit).
+      proxy_set_header Cookie "";
+      {{- end }}
       
       # Strip /ws-assist prefix
       rewrite ^/ws-assist/(.*)$ /$1 break;
