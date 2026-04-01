@@ -105,6 +105,20 @@ env:
   debug: 0
   redis: false
   CLEAR_SOCKET_TIME: 720
+  # Raise Node.js max HTTP header size from 16KB to 64KB.
+  # WebSocket upgrade requests to /ws-assist carry a long URL (session metadata)
+  # plus browser cookies and proxy headers that easily exceed the 16KB default,
+  # causing Node.js to reject them with HTTP 431.
+  #
+  # Raise uWebSockets.js max HTTP header size from 4KB to 64KB.
+  # WebSocket upgrade requests to /ws-assist carry a long URL (session metadata)
+  # plus browser cookies and proxy headers that easily exceed the 4KB default,
+  # causing uWebSockets.js to reject them with HTTP 431.
+  # Ref: https://github.com/uNetworking/uWebSockets/issues/1658
+  #
+  # env varibles to increase buffer to 64k:
+  # UWS_HTTP_MAX_HEADERS_SIZE: "65536"
+  # NODE_OPTIONS: "--max-http-header-size=65536"
 
 
 nodeSelector: {}
