@@ -8,7 +8,7 @@ import (
 	ctxStore "github.com/docker/distribution/context"
 
 	"openreplay/backend/pkg/server/api"
-	tenant2 "openreplay/backend/pkg/server/tenant"
+	"openreplay/backend/pkg/server/tenant"
 	user2 "openreplay/backend/pkg/server/user"
 )
 
@@ -24,7 +24,7 @@ func (a *authImpl) Middleware(next http.Handler) http.Handler {
 		if a.isApiKeyRequest(r) {
 			projectKey, _ := api.GetParam(r, "project")
 			var (
-				dbTenant *tenant2.Tenant
+				dbTenant *tenant.Tenant
 				authErr  error
 			)
 			if projectKey != "" {
