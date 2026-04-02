@@ -491,7 +491,11 @@ class SearchStore {
 
   addFilter = (filter: any) => {
     filter = this.getFilterDefaults(filter);
-    if (filter.isEvent && (!filter.filters || filter.filters.length === 0)) {
+    if (
+      !filterStore.checkDefaultSubfilters(filter) &&
+      filter.isEvent &&
+      (!filter.filters || filter.filters.length === 0)
+    ) {
       filterStore.getEventFilters(filter.id).then((props) => {
         filter.filters = props?.filter((prop) => prop.defaultProperty);
       });

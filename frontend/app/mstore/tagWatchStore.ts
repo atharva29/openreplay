@@ -1,10 +1,14 @@
+import { projectStore } from '@/mstore';
 import { makeAutoObservable } from 'mobx';
+
 import { tagWatchService } from 'App/services';
 import { CreateTag, Tag } from 'App/services/TagWatchService';
-import { projectStore } from '@/mstore';
 
 export default class TagWatchStore {
   tags: Tag[] = [];
+  total = 0;
+  page = 1;
+  limit = 10;
 
   isLoading = false;
 
@@ -20,16 +24,20 @@ export default class TagWatchStore {
     this.isLoading = loading;
   };
 
-  getTags = async (projectId?: number) => {
+  getTags = async (projectId?: number, page?: number) => {
     if (this.isLoading) {
       return;
+    }
+    if (page !== undefined) {
+      this.page = page;
     }
     this.setLoading(true);
     try {
       const pid = projectId || projectStore.active?.projectId;
-      const tags: Tag[] = await tagWatchService.getTags(pid!);
-      this.setTags(tags);
-      return tags;
+      const resp = await tagWatchService.getTags(pid!, this.page, this.limit);
+      this.setTags(resp.tags || []);
+      this.total = resp.total || 0;
+      return resp.tags;
     } catch (e) {
       console.error(e);
     } finally {
@@ -57,14 +65,20 @@ export default class TagWatchStore {
     }
   };
 
-  updateTagName = async (id: number, name: string, projectId?: number) => {
+  updateTag = async (
+    id: number,
+    data: { name: string; location?: string },
+    projectId?: number,
+  ) => {
     try {
       const pid = projectId || projectStore.active?.projectId;
-      await tagWatchService.updateTagName(pid!, id, name);
+      await tagWatchService.updateTag(pid!, id, data);
       const updatedTag = this.tags.find((t) => t.tagId === id);
       if (updatedTag) {
         this.setTags(
-          this.tags.map((t) => (t.tagId === id ? { ...updatedTag, name } : t)),
+          this.tags.map((t) =>
+            t.tagId === id ? { ...updatedTag, ...data } : t,
+          ),
         );
       }
     } catch (e) {
