@@ -2386,6 +2386,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@openreplay/player@portal:../player::locator=openreplay%40workspace%3A.":
+  version: 0.0.0-use.local
+  resolution: "@openreplay/player@portal:../player::locator=openreplay%40workspace%3A."
+  dependencies:
+    fflate: "npm:^0.8.2"
+    fzstd: "npm:^0.1.1"
+    js-untar: "npm:^2.0.0"
+    socket.io-client: "npm:^4.8.3"
+    syncod: "npm:^0.0.1"
+  languageName: node
+  linkType: soft
+
 "@openreplay/sourcemap-uploader@npm:^3.0.13":
   version: 3.0.13
   resolution: "@openreplay/sourcemap-uploader@npm:3.0.13"
@@ -12683,6 +12695,7 @@ __metadata:
     "@jest/globals": "npm:^29.7.0"
     "@medv/finder": "npm:^4.0.2"
     "@neodrag/react": "npm:^2.3.1"
+    "@openreplay/player": "portal:../player"
     "@openreplay/sourcemap-uploader": "npm:^3.0.13"
     "@parcel/optimizer-svgo": "npm:^2.16.4"
     "@parcel/transformer-inline-string": "npm:2.16.4"
