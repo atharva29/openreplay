@@ -656,9 +656,7 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
             cur.mogrify(
                 """UPDATE public.users
                    SET role = 'admin',
-                       role_id = %(admin_role_id)s,
-                       jwt_iat = NULL, jwt_refresh_jti = NULL, jwt_refresh_iat = NULL,
-                       spot_jwt_iat = NULL, spot_jwt_refresh_jti = NULL, spot_jwt_refresh_iat = NULL
+                       role_id = %(admin_role_id)s
                    WHERE user_id = %(current_owner_id)s
                      AND tenant_id = %(tenant_id)s
                      AND deleted_at IS NULL;""",
@@ -673,9 +671,7 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
             cur.mogrify(
                 """UPDATE public.users
                    SET role = 'owner',
-                       role_id = %(owner_role_id)s,
-                       jwt_iat = NULL, jwt_refresh_jti = NULL, jwt_refresh_iat = NULL,
-                       spot_jwt_iat = NULL, spot_jwt_refresh_jti = NULL, spot_jwt_refresh_iat = NULL
+                       role_id = %(owner_role_id)s
                    WHERE user_id = %(new_owner_id)s
                      AND tenant_id = %(tenant_id)s
                      AND deleted_at IS NULL;""",
@@ -686,6 +682,9 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
                 },
             )
         )
+
+    cache.pop((user_id, tenant_id), None)
+    cache.pop((new_owner_id, tenant_id), None)
 
     return {"data": get_member(tenant_id=tenant_id, user_id=new_owner_id)}
 
