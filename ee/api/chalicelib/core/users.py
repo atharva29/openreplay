@@ -3,6 +3,7 @@ import logging
 import secrets
 from typing import Optional
 
+import schemas
 from cachetools import TTLCache, cached
 from decouple import config
 from fastapi import BackgroundTasks, HTTPException
@@ -10,12 +11,8 @@ from psycopg2.extras import Json
 from pydantic import BaseModel, model_validator
 from starlette import status
 
-import schemas
-from chalicelib.core import authorizers
-from chalicelib.core import tenants, roles, spot
-from chalicelib.utils import email_helper
-from chalicelib.utils import helper
-from chalicelib.utils import pg_client
+from chalicelib.core import authorizers, roles, spot, tenants
+from chalicelib.utils import email_helper, helper, pg_client
 from chalicelib.utils.TimeUTC import TimeUTC
 
 logger = logging.getLogger(__name__)
@@ -27,7 +24,14 @@ def __generate_invitation_token():
 
 
 def create_new_member(
-        tenant_id, email, invitation_token, admin, name, owner=False, role_id=None, modules=[]
+    tenant_id,
+    email,
+    invitation_token,
+    admin,
+    name,
+    owner=False,
+    role_id=None,
+    modules=[],
 ):
     with pg_client.PostgresClient() as cur:
         query = cur.mogrify(
@@ -35,7 +39,7 @@ def create_new_member(
             WITH u AS (
             INSERT
             INTO public.users (tenant_id, email, role, name, data, role_id{", settings" if len(modules) > 0 else ""})
-            VALUES (%(tenant_id)s, %(email)s, %(role)s, %(name)s, %(data)s, 
+            VALUES (%(tenant_id)s, %(email)s, %(role)s, %(name)s, %(data)s,
                     (SELECT COALESCE ((SELECT role_id FROM roles WHERE tenant_id = %(tenant_id)s AND role_id = %(role_id)s), (SELECT role_id FROM roles WHERE tenant_id = %(tenant_id)s AND name = 'Member' LIMIT 1), (SELECT role_id FROM roles WHERE tenant_id = %(tenant_id)s AND name != 'Owner' LIMIT 1)))
                     {", %(settings)s" if len(modules) > 0 else ""})
                 RETURNING tenant_id, user_id, email, role, name, created_at, role_id
@@ -70,7 +74,7 @@ def create_new_member(
                 "data": json.dumps({"lastAnnouncementView": TimeUTC.now()}),
                 "invitation_token": invitation_token,
                 "role_id": role_id,
-                "settings": json.dumps({"modules": modules})
+                "settings": json.dumps({"modules": modules}),
             },
         )
         cur.execute(query)
@@ -81,7 +85,15 @@ def create_new_member(
 
 
 def restore_member(
-        tenant_id, user_id, email, invitation_token, admin, name, owner=False, role_id=None, modules=[]
+    tenant_id,
+    user_id,
+    email,
+    invitation_token,
+    admin,
+    name,
+    owner=False,
+    role_id=None,
+    modules=[],
 ):
     with pg_client.PostgresClient() as cur:
         query = cur.mogrify(
@@ -134,7 +146,7 @@ def restore_member(
                 "name": name,
                 "role_id": role_id,
                 "invitation_token": invitation_token,
-                "settings": json.dumps({"modules": modules})
+                "settings": json.dumps({"modules": modules}),
             },
         )
         cur.execute(query)
@@ -198,7 +210,7 @@ def update(tenant_id, user_id, changes, output=True):
                                                 (SELECT role_id FROM roles WHERE tenant_id = %(tenant_id)s AND name = 'Member' LIMIT 1),
                                                 (SELECT role_id FROM roles WHERE tenant_id = %(tenant_id)s AND name != 'Owner' LIMIT 1)))""")
             elif (
-                    key == "data"
+                key == "data"
             ):  # this is hardcoded, maybe a generic solution would be better
                 sub_query_users.append(f"data = data || %({(key)})s")
             else:
@@ -232,10 +244,10 @@ def update(tenant_id, user_id, changes, output=True):
 
 
 def create_member(
-        tenant_id,
-        user_id,
-        data: schemas.CreateMemberSchema,
-        background_tasks: BackgroundTasks,
+    tenant_id,
+    user_id,
+    data: schemas.CreateMemberSchema,
+    background_tasks: BackgroundTasks,
 ):
     admin = get_user(tenant_id=tenant_id, user_id=user_id)
     if not admin["admin"] and not admin["superAdmin"]:
@@ -368,7 +380,9 @@ def get_user(user_id, tenant_id):
         r = cur.fetchone()
         result = helper.dict_to_camel_case(r)
         if result and isinstance(result, dict):
-            if result.get("settings") is None or not isinstance(result.get("settings"), dict):
+            if result.get("settings") is None or not isinstance(
+                result.get("settings"), dict
+            ):
                 result["settings"] = {}
             if not result["settings"].get("modules"):
                 result["settings"]["modules"] = []
@@ -412,9 +426,9 @@ def __get_account_info(tenant_id, user_id):
 
 def edit_account(user_id, tenant_id, changes: schemas.EditAccountSchema):
     if (
-            changes.opt_out is not None
-            or changes.tenantName is not None
-            and len(changes.tenantName) > 0
+        changes.opt_out is not None
+        or changes.tenantName is not None
+        and len(changes.tenantName) > 0
     ):
         user = get_user(user_id=user_id, tenant_id=tenant_id)
         if not user["superAdmin"] and not user["admin"]:
@@ -436,7 +450,7 @@ def edit_account(user_id, tenant_id, changes: schemas.EditAccountSchema):
 
 
 def edit_member(
-        user_id_to_update, tenant_id, changes: schemas.EditMemberSchema, editor_id
+    user_id_to_update, tenant_id, changes: schemas.EditMemberSchema, editor_id
 ):
     user = get_member(user_id=user_id_to_update, tenant_id=tenant_id)
     _changes = {}
@@ -599,6 +613,83 @@ def get_members(tenant_id):
     return []
 
 
+def transfer_ownership(tenant_id, user_id, new_owner_id):
+    if user_id == new_owner_id:
+        return {"errors": ["cannot transfer ownership to yourself"]}
+
+    current_owner = get_user_role(tenant_id=tenant_id, user_id=user_id)
+    if current_owner is None or not current_owner["superAdmin"]:
+        return {"errors": ["only the current owner can transfer ownership"]}
+
+    new_owner = get_member(tenant_id=tenant_id, user_id=new_owner_id)
+    if new_owner is None:
+        return {"errors": ["target user not found"]}
+
+    if not new_owner["joined"]:
+        return {
+            "errors": [
+                "target user has not yet joined, they must accept their invitation first"
+            ]
+        }
+
+    with pg_client.PostgresClient() as cur:
+        cur.execute(
+            cur.mogrify(
+                """SELECT service_account
+                   FROM public.users
+                   WHERE user_id = %(user_id)s
+                     AND tenant_id = %(tenant_id)s;""",
+                {"user_id": new_owner_id, "tenant_id": tenant_id},
+            )
+        )
+        row = cur.fetchone()
+        if row and row["service_account"]:
+            return {"errors": ["cannot transfer ownership to a service account"]}
+
+    owner_role = roles.get_role_by_name(tenant_id=tenant_id, name="Owner")
+    admin_role = roles.get_role_by_name(
+        tenant_id=tenant_id, name="Admin", include_owner=False
+    )
+
+    with pg_client.PostgresClient() as cur:
+        cur.execute(
+            cur.mogrify(
+                """UPDATE public.users
+                   SET role = 'admin',
+                       role_id = %(admin_role_id)s,
+                       jwt_iat = NULL, jwt_refresh_jti = NULL, jwt_refresh_iat = NULL,
+                       spot_jwt_iat = NULL, spot_jwt_refresh_jti = NULL, spot_jwt_refresh_iat = NULL
+                   WHERE user_id = %(current_owner_id)s
+                     AND tenant_id = %(tenant_id)s
+                     AND deleted_at IS NULL;""",
+                {
+                    "current_owner_id": user_id,
+                    "tenant_id": tenant_id,
+                    "admin_role_id": admin_role["roleId"] if admin_role else None,
+                },
+            )
+        )
+        cur.execute(
+            cur.mogrify(
+                """UPDATE public.users
+                   SET role = 'owner',
+                       role_id = %(owner_role_id)s,
+                       jwt_iat = NULL, jwt_refresh_jti = NULL, jwt_refresh_iat = NULL,
+                       spot_jwt_iat = NULL, spot_jwt_refresh_jti = NULL, spot_jwt_refresh_iat = NULL
+                   WHERE user_id = %(new_owner_id)s
+                     AND tenant_id = %(tenant_id)s
+                     AND deleted_at IS NULL;""",
+                {
+                    "new_owner_id": new_owner_id,
+                    "tenant_id": tenant_id,
+                    "owner_role_id": owner_role["roleId"] if owner_role else None,
+                },
+            )
+        )
+
+    return {"data": get_member(tenant_id=tenant_id, user_id=new_owner_id)}
+
+
 def delete_member(user_id, tenant_id, id_to_delete):
     if user_id == id_to_delete:
         return {"errors": ["unauthorized, cannot delete self"]}
@@ -649,10 +740,10 @@ def change_password(tenant_id, user_id, email, old_password, new_password):
     if item is None:
         return {"errors": ["access denied"]}
     if (
-            item["origin"] is not None
-            and config("enforce_SSO", cast=bool, default=False)
-            and not item["superAdmin"]
-            and helper.is_saml2_available()
+        item["origin"] is not None
+        and config("enforce_SSO", cast=bool, default=False)
+        and not item["superAdmin"]
+        and helper.is_saml2_available()
     ):
         return {
             "errors": ["Please use your SSO to change your password, enforced by admin"]
@@ -768,10 +859,10 @@ def auth_exists(user_id, tenant_id, jwt_iat) -> bool:
         )
         r = cur.fetchone()
     return r is not None and (
-            r["service_account"]
-            and not r["has_basic_auth"]
-            or r.get("jwt_iat") is not None
-            and (abs(jwt_iat - r["jwt_iat"]) <= 1)
+        r["service_account"]
+        and not r["has_basic_auth"]
+        or r.get("jwt_iat") is not None
+        and (abs(jwt_iat - r["jwt_iat"]) <= 1)
     )
 
 
@@ -917,8 +1008,8 @@ def authenticate(email, password, for_change_password=False) -> dict | bool | No
                 detail="service account is not authorized to login",
             )
         elif (
-                config("enforce_SSO", cast=bool, default=False)
-                and helper.is_saml2_available()
+            config("enforce_SSO", cast=bool, default=False)
+            and helper.is_saml2_available()
         ):
             return {"errors": ["must sign-in with SSO, enforced by admin"]}
 
@@ -1065,7 +1156,7 @@ def refresh(user_id: int, tenant_id: int = -1) -> dict:
             jwt_jti=j.jwt_refresh_jti,
         ),
         "refreshTokenMaxAge": config("JWT_REFRESH_EXPIRATION", cast=int)
-                              - (j.jwt_iat - j.jwt_refresh_iat),
+        - (j.jwt_iat - j.jwt_refresh_iat),
     }
 
 
@@ -1139,7 +1230,7 @@ def authenticate_sso(email: str, internal_id: str):
 
 
 def restore_sso_user(
-        user_id, tenant_id, email, admin, name, origin, role_id, internal_id=None
+    user_id, tenant_id, email, admin, name, origin, role_id, internal_id=None
 ):
     with pg_client.PostgresClient() as cur:
         query = cur.mogrify(

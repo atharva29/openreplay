@@ -405,6 +405,44 @@ def get_members(tenant_id):
     return []
 
 
+def transfer_ownership(tenant_id, user_id, new_owner_id):
+    if user_id == new_owner_id:
+        return {"errors": ["cannot transfer ownership to yourself"]}
+
+    current_owner = get_user_role(tenant_id=tenant_id, user_id=user_id)
+    if current_owner is None or not current_owner["superAdmin"]:
+        return {"errors": ["only the current owner can transfer ownership"]}
+
+    new_owner = get_member(tenant_id=tenant_id, user_id=new_owner_id)
+    if new_owner is None:
+        return {"errors": ["target user not found"]}
+
+    if not new_owner["joined"]:
+        return {"errors": ["target user has not yet joined, they must accept their invitation first"]}
+
+    with pg_client.PostgresClient() as cur:
+        cur.execute(
+            cur.mogrify(
+                """UPDATE public.users
+                   SET role = 'admin',
+                       jwt_iat = NULL, jwt_refresh_jti = NULL, jwt_refresh_iat = NULL,
+                       spot_jwt_iat = NULL, spot_jwt_refresh_jti = NULL, spot_jwt_refresh_iat = NULL
+                   WHERE user_id = %(current_owner_id)s
+                     AND deleted_at IS NULL;""",
+                {"current_owner_id": user_id}))
+        cur.execute(
+            cur.mogrify(
+                """UPDATE public.users
+                   SET role = 'owner',
+                       jwt_iat = NULL, jwt_refresh_jti = NULL, jwt_refresh_iat = NULL,
+                       spot_jwt_iat = NULL, spot_jwt_refresh_jti = NULL, spot_jwt_refresh_iat = NULL
+                   WHERE user_id = %(new_owner_id)s
+                     AND deleted_at IS NULL;""",
+                {"new_owner_id": new_owner_id}))
+
+    return {"data": get_member(tenant_id=tenant_id, user_id=new_owner_id)}
+
+
 def delete_member(user_id, tenant_id, id_to_delete):
     if user_id == id_to_delete:
         return {"errors": ["unauthorized, cannot delete self"]}

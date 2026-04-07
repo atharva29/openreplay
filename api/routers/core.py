@@ -737,6 +737,11 @@ def delete_member(memberId: int, _=Body(None), context: schemas.CurrentContext =
     return users.delete_member(tenant_id=context.tenant_id, user_id=context.user_id, id_to_delete=memberId)
 
 
+@app.put('/client/members/{memberId}/owner', tags=["client"], dependencies=[OR_role("owner")])
+def transfer_ownership(memberId: int, _=Body(None), context: schemas.CurrentContext = Depends(OR_context)):
+    return users.transfer_ownership(tenant_id=context.tenant_id, user_id=context.user_id, new_owner_id=memberId)
+
+
 @app.get('/account/new_api_key', tags=["account"], dependencies=[OR_role("owner", "admin")])
 def generate_new_user_token(context: schemas.CurrentContext = Depends(OR_context)):
     return {"data": users.generate_new_api_key(user_id=context.user_id)}
