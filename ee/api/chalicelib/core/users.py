@@ -632,13 +632,21 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
             ]
         }
 
+    owner_role = roles.get_role_by_name(tenant_id=tenant_id, name="Owner")
+    admin_role = roles.get_role_by_name(
+        tenant_id=tenant_id, name="Admin", include_owner=False
+    )
+    if owner_role is None or admin_role is None:
+        return {"errors": ["required roles (Owner/Admin) not found, cannot transfer ownership"]}
+
     with pg_client.PostgresClient() as cur:
         cur.execute(
             cur.mogrify(
                 """SELECT service_account
                    FROM public.users
                    WHERE user_id = %(user_id)s
-                     AND tenant_id = %(tenant_id)s;""",
+                     AND tenant_id = %(tenant_id)s
+                   FOR UPDATE;""",
                 {"user_id": new_owner_id, "tenant_id": tenant_id},
             )
         )
@@ -646,12 +654,6 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
         if row and row["service_account"]:
             return {"errors": ["cannot transfer ownership to a service account"]}
 
-    owner_role = roles.get_role_by_name(tenant_id=tenant_id, name="Owner")
-    admin_role = roles.get_role_by_name(
-        tenant_id=tenant_id, name="Admin", include_owner=False
-    )
-
-    with pg_client.PostgresClient() as cur:
         cur.execute(
             cur.mogrify(
                 """UPDATE public.users
@@ -663,7 +665,7 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
                 {
                     "current_owner_id": user_id,
                     "tenant_id": tenant_id,
-                    "admin_role_id": admin_role["roleId"] if admin_role else None,
+                    "admin_role_id": admin_role["roleId"],
                 },
             )
         )
@@ -678,7 +680,7 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
                 {
                     "new_owner_id": new_owner_id,
                     "tenant_id": tenant_id,
-                    "owner_role_id": owner_role["roleId"] if owner_role else None,
+                    "owner_role_id": owner_role["roleId"],
                 },
             )
         )
