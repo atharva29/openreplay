@@ -660,6 +660,7 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
                    SET role = 'admin',
                        role_id = %(admin_role_id)s
                    WHERE user_id = %(current_owner_id)s
+                     AND role = 'owner'
                      AND tenant_id = %(tenant_id)s
                      AND deleted_at IS NULL;""",
                 {
@@ -669,12 +670,15 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
                 },
             )
         )
+        if cur.rowcount == 0:
+            return {"errors": ["ownership transfer failed, owner role may have already been transferred"]}
         cur.execute(
             cur.mogrify(
                 """UPDATE public.users
                    SET role = 'owner',
                        role_id = %(owner_role_id)s
                    WHERE user_id = %(new_owner_id)s
+                     AND role != 'owner'
                      AND tenant_id = %(tenant_id)s
                      AND deleted_at IS NULL;""",
                 {
