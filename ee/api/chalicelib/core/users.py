@@ -688,6 +688,23 @@ def transfer_ownership(tenant_id, user_id, new_owner_id):
                 },
             )
         )
+        if cur.rowcount == 0:
+            cur.execute(
+                cur.mogrify(
+                    """UPDATE public.users
+                       SET role = 'owner',
+                           role_id = %(owner_role_id)s
+                       WHERE user_id = %(current_owner_id)s
+                         AND tenant_id = %(tenant_id)s
+                         AND deleted_at IS NULL;""",
+                    {
+                        "current_owner_id": user_id,
+                        "tenant_id": tenant_id,
+                        "owner_role_id": owner_role["roleId"],
+                    },
+                )
+            )
+            return {"errors": ["ownership transfer failed, target user could not be promoted"]}
 
     cache.pop((user_id, tenant_id), None)
     cache.pop((new_owner_id, tenant_id), None)
