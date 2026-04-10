@@ -2,16 +2,22 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"openreplay/backend/pkg/db/postgres/pool"
+	"openreplay/backend/pkg/db/redis"
+	"openreplay/backend/pkg/images/service"
+	"openreplay/backend/pkg/metrics/database"
+	"openreplay/backend/pkg/metrics/web"
+	"openreplay/backend/pkg/server"
+	"openreplay/backend/pkg/server/api"
+	"openreplay/backend/pkg/server/middleware"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
 	config "openreplay/backend/internal/config/images"
-	"openreplay/backend/internal/images"
 	"openreplay/backend/pkg/health"
+	imageService "openreplay/backend/pkg/images"
 	"openreplay/backend/pkg/logger"
 	"openreplay/backend/pkg/messages"
 	"openreplay/backend/pkg/metrics"
@@ -29,19 +35,37 @@ func main() {
 	h := health.New()
 
 	imageMetrics := imagesMetrics.New("images")
-	metrics.New(log, imageMetrics.List())
+	webMetrics := web.New("images")
+	dbMetric := database.New("images")
+	metrics.New(log, append(imageMetrics.List(), append(webMetrics.List(), dbMetric.List()...)...))
+
+	pgConn, err := pool.New(dbMetric, cfg.Postgres.String())
+	if err != nil {
+		log.Fatal(ctx, "can't init postgres connection: %s", err)
+	}
+	defer pgConn.Close()
+
+	redisConn, err := redis.New(&cfg.Redis)
+	if err != nil {
+		log.Warn(ctx, "can't init redis connection: %s", err)
+	}
+	defer redisConn.Close()
 
 	objStore, err := store.NewStore(&cfg.ObjectsConfig)
 	if err != nil {
 		log.Fatal(ctx, "can't init object storage: %s", err)
 	}
 
-	srv, err := images.New(cfg, log, objStore, imageMetrics)
+	producer := queue.NewProducer(cfg.MessageSizeLimit, true)
+	defer producer.Close(15000)
+	h.Register("producer", func(ctx context.Context) error {
+		return producer.Ping(ctx)
+	})
+
+	srv, err := service.New(cfg, log, objStore, imageMetrics)
 	if err != nil {
 		log.Fatal(ctx, "can't init images service: %s", err)
 	}
-
-	workDir := cfg.FSDir
 
 	consumer, err := queue.NewConsumer(
 		log,
@@ -49,53 +73,7 @@ func main() {
 		[]string{
 			cfg.TopicRawImages,
 		},
-		messages.NewImagesMessageIterator(func(data []byte, sessID uint64) {
-			checkSessionEnd := func(data []byte) (messages.Message, error) {
-				reader := messages.NewBytesReader(data)
-				msgType, err := reader.ReadUint()
-				if err != nil {
-					return nil, err
-				}
-				if msgType != messages.MsgMobileSessionEnd {
-					return nil, fmt.Errorf("not a mobile session end message")
-				}
-				msg, err := messages.ReadMessage(msgType, reader)
-				if err != nil {
-					return nil, fmt.Errorf("read message err: %s", err)
-				}
-				return msg, nil
-			}
-			isCleanSessionEvent := func(data []byte) bool {
-				reader := messages.NewBytesReader(data)
-				msgType, err := reader.ReadUint()
-				if err != nil {
-					return false
-				}
-				if msgType != messages.MsgCleanSession {
-					return false
-				}
-				_, err = messages.ReadMessage(msgType, reader)
-				if err != nil {
-					return false
-				}
-				return true
-			}
-			sessCtx := context.WithValue(context.Background(), "sessionID", fmt.Sprintf("%d", sessID))
-
-			if _, err := checkSessionEnd(data); err == nil {
-				if err := srv.PackScreenshots(sessCtx, sessID, workDir+"/screenshots/"+strconv.FormatUint(sessID, 10)+"/"); err != nil {
-					log.Error(sessCtx, "can't pack screenshots: %s", err)
-				}
-			} else if isCleanSessionEvent(data) {
-				if err := srv.CleanSession(sessCtx, sessID); err != nil {
-					log.Error(sessCtx, "can't clean session: %s", err)
-				}
-			} else {
-				if err := srv.Process(sessCtx, sessID, data); err != nil {
-					log.Error(sessCtx, "can't process screenshots: %s", err)
-				}
-			}
-		}, nil, true),
+		messages.NewImagesMessageIterator(srv.MessageIterator, nil, true),
 		false,
 		cfg.MessageSizeLimit,
 		nil,
@@ -107,6 +85,20 @@ func main() {
 	h.Register("consumer", func(ctx context.Context) error {
 		return consumer.Ping(ctx)
 	})
+
+	services, err := imageService.NewServiceBuilder(log, cfg, webMetrics, dbMetric, producer, pgConn, redisConn)
+
+	middlewares, err := middleware.NewMinimalMiddlewareBuilder(&cfg.HTTP)
+	if err != nil {
+		log.Fatal(ctx, "failed while creating minimal http middleware: %s", err)
+	}
+
+	router, err := api.NewRouter(log, &cfg.HTTP, api.NoPrefix, services.Handlers(), middlewares.Middlewares())
+	if err != nil {
+		log.Fatal(ctx, "failed while creating router: %s", err)
+	}
+
+	go server.Run(ctx, log, &cfg.HTTP, router)
 
 	log.Info(ctx, "Images service started")
 
