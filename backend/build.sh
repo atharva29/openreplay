@@ -32,6 +32,14 @@ check_prereq() {
     return
 }
 
+# Sourcing init scripts
+for file in ./build_init_*; do
+    if [ -f "$file" ]; then
+        echo "Sourcing $file"
+        source "$file"
+    fi
+done
+
 [[ $1 == ee ]] && ee=true
 [[ $PATCH -eq 1 ]] && {
     chart=$2
@@ -54,7 +62,7 @@ update_helm_release() {
 
 function build_service() {
     image="$1"
-    echo "BUILDING $image"
+    echo "BUILDING $image ${image_tag}"
     docker build -t ${DOCKER_REPO:-'local'}/$image:${image_tag} --platform $arch --build-arg ARCH=$arch --build-arg SERVICE_NAME=$image --build-arg GIT_SHA=$git_sha .
     [[ $PUSH_IMAGE -eq 1 ]] && {
         docker push ${DOCKER_REPO:-'local'}/$image:${image_tag}
@@ -91,7 +99,9 @@ function build_api() {
     }
     for image in $(ls cmd); do
         [[ $image == "video-replays" ]] && continue
+        [[ $DEDICATED == 1 ]] && image_tag="$(grep -ER ^.ppVersion ../scripts/helmcharts/openreplay/charts/$image | xargs | awk '{print $2}')"
         build_service "$image"
+        echo "::set-output name=image::${DOCKER_REPO:-'local'}/$image:${image_tag}"
     done
     cd ../backend
     rm -rf ../${destination}
