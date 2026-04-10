@@ -178,7 +178,6 @@ prepare() {
   echo "BUCKET_NAME=spot" >> "$ENV_FILE"
   echo "KAFKA_MAX_POLL_INTERVAL_MS=300000" >> "$ENV_FILE"
   echo "KAFKA_USE_KERBEROS=false" >> "$ENV_FILE"
-  echo "ICE_SERVERS=\"stun:stun.l.google.com:19302\"" >> "$ENV_FILE"
   echo "ASSIST_SECRET=\"test-assist-secret\"" >> "$ENV_FILE"
   echo "ASSIST_TTL=\"48\"" >> "$ENV_FILE"
 

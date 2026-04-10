@@ -34,7 +34,6 @@ type Config struct {
 	AssistJwtExpiration   int64         `env:"ASSIST_JWT_EXPIRATION,default=144000"`
 	AssistSecret          string        `env:"ASSIST_SECRET"`
 	AssistTTL             int           `env:"ASSIST_TTL,default=48"`
-	IceServers            string        `env:"ICE_SERVERS"`
 	WorkerID              uint16
 }
 

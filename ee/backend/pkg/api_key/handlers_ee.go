@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"openreplay/backend/pkg/assist/proxy"
@@ -24,10 +23,9 @@ func (h *handlersImpl) assistHandlers(req api.RequestHandler) []*api.Description
 	}
 }
 
-type iceServer struct {
-	URLs       string `json:"urls"`
-	Username   string `json:"username,omitempty"`
-	Credential string `json:"credential,omitempty"`
+type temporaryCredentials struct {
+	Username   string `json:"username"`
+	Credential string `json:"credential"`
 }
 
 func generateSalt() string {
@@ -36,54 +34,24 @@ func generateSalt() string {
 	return hex.EncodeToString(b)
 }
 
-func (h *handlersImpl) getIceServers() ([]iceServer, error) {
-	iceServersStr := h.cfg.IceServers
-	if iceServersStr == "" {
-		return nil, fmt.Errorf("ICE servers not configured")
-	}
-
-	servers := strings.Split(iceServersStr, "|")
+func (h *handlersImpl) getTemporaryCredentials() (*temporaryCredentials, error) {
 	secret := h.cfg.AssistSecret
-	result := make([]iceServer, 0, len(servers))
-
-	if secret != "" {
-		ttl := h.cfg.AssistTTL * 3600
-		timestamp := time.Now().Unix() + int64(ttl)
-		user := generateSalt()
-		username := fmt.Sprintf("%d:%s", timestamp, user)
-
-		mac := hmac.New(sha1.New, []byte(secret))
-		mac.Write([]byte(username))
-		credential := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-
-		for _, s := range servers {
-			url := strings.SplitN(s, ",", 2)[0]
-			if strings.HasPrefix(strings.ToLower(url), "stun") {
-				result = append(result, iceServer{URLs: url})
-			} else {
-				result = append(result, iceServer{
-					URLs:       url,
-					Username:   username,
-					Credential: credential,
-				})
-			}
-		}
-	} else {
-		for _, s := range servers {
-			parts := strings.SplitN(s, ",", 4)
-			if len(parts) == 3 {
-				result = append(result, iceServer{
-					URLs:       parts[0],
-					Username:   parts[1],
-					Credential: parts[2],
-				})
-			} else {
-				result = append(result, iceServer{URLs: parts[0]})
-			}
-		}
+	if secret == "" {
+		return nil, fmt.Errorf("secret not defined")
 	}
 
-	return result, nil
+	ttl := h.cfg.AssistTTL * 3600
+	timestamp := time.Now().Unix() + int64(ttl)
+	username := fmt.Sprintf("%d:%s", timestamp, generateSalt())
+
+	mac := hmac.New(sha1.New, []byte(secret))
+	mac.Write([]byte(username))
+	credential := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	return &temporaryCredentials{
+		Username:   username,
+		Credential: credential,
+	}, nil
 }
 
 func unwrapAssistData(resp interface{}) interface{} {
@@ -96,11 +64,11 @@ func unwrapAssistData(resp interface{}) interface{} {
 }
 
 func (h *handlersImpl) getAssistCredentials(r *api.RequestContext) (any, int, error) {
-	servers, err := h.getIceServers()
+	creds, err := h.getTemporaryCredentials()
 	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("failed to get assist credentials")
+		return nil, http.StatusInternalServerError, err
 	}
-	return servers, 0, nil
+	return creds, 0, nil
 }
 
 func (h *handlersImpl) getAssistSessions(r *api.RequestContext) (any, int, error) {
