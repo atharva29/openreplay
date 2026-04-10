@@ -9,17 +9,12 @@ import (
 	"openreplay/backend/pkg/server/user"
 )
 
-func (a *authImpl) isAuthorizedApiKey(authHeader string, projectKey string) (*tenant.Tenant, error) {
+func (a *authImpl) isAuthorizedApiKey(apiKey string, projectKey string) (*tenant.Tenant, error) {
 	if a.tenants == nil {
 		return nil, fmt.Errorf("tenants service is not configured")
 	}
 	if a.projects == nil {
 		return nil, fmt.Errorf("projects service is not configured")
-	}
-
-	apiKey, err := getTokenString(authHeader)
-	if err != nil {
-		return nil, err
 	}
 
 	dbTenant, err := a.tenants.GetTenantByApiKey(apiKey)
@@ -34,6 +29,13 @@ func (a *authImpl) isAuthorizedApiKey(authHeader string, projectKey string) (*te
 	}
 
 	return dbTenant, nil
+}
+
+func (a *authImpl) isAuthorizedApiKeyOnly(apiKey string) (*tenant.Tenant, error) {
+	if a.tenants == nil {
+		return nil, fmt.Errorf("tenants service is not configured")
+	}
+	return a.tenants.GetTenantByApiKey(apiKey)
 }
 
 func (a *authImpl) validateProjectAccess(r *http.Request, u *user.User) error {

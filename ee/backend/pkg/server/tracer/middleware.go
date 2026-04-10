@@ -78,7 +78,11 @@ func (t *tracerImpl) logRequest(r *http.Request, bodyBytes []byte, statusCode in
 		Parameters: jsonData,
 		Status:     statusCode,
 	}
-	userData := r.Context().Value("userData").(*user.User)
+	userDataRaw := r.Context().Value("userData")
+	if userDataRaw == nil {
+		return
+	}
+	userData := userDataRaw.(*user.User)
 	t.trace(userData, requestData)
 	t.log.Debug(r.Context(), "request data: %v", requestData)
 }

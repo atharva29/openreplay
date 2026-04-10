@@ -86,6 +86,15 @@ func (h *handlersImpl) getIceServers() ([]iceServer, error) {
 	return result, nil
 }
 
+func unwrapAssistData(resp interface{}) interface{} {
+	if m, ok := resp.(map[string]interface{}); ok {
+		if inner, ok := m["data"]; ok {
+			return inner
+		}
+	}
+	return resp
+}
+
 func (h *handlersImpl) getAssistCredentials(r *api.RequestContext) (any, int, error) {
 	servers, err := h.getIceServers()
 	if err != nil {
@@ -125,7 +134,7 @@ func (h *handlersImpl) getAssistSessions(r *api.RequestContext) (any, int, error
 		return nil, http.StatusInternalServerError, fmt.Errorf("failed to get assist sessions")
 	}
 
-	return resp, 0, nil
+	return unwrapAssistData(resp), 0, nil
 }
 
 func (h *handlersImpl) searchAssistSessions(r *api.RequestContext) (any, int, error) {
@@ -158,5 +167,5 @@ func (h *handlersImpl) searchAssistSessions(r *api.RequestContext) (any, int, er
 		return nil, http.StatusInternalServerError, fmt.Errorf("failed to search assist sessions")
 	}
 
-	return resp, 0, nil
+	return unwrapAssistData(resp), 0, nil
 }

@@ -26,11 +26,44 @@ cleanup() {
   rm -f "$ENV_FILE"
 }
 
+forward_services() {
+  local namespace="$1"
+  shift
+  local entries=("$@")
+
+  echo "[ℹ️] Discovering services in '$namespace'..."
+  local svc_file="/tmp/svc_list_${namespace}.json"
+  kubectl get svc -n "$namespace" -o json > "$svc_file"
+
+  for entry in "${entries[@]}"; do
+    local svc_key="${entry%%:*}"
+    local temp="${entry#*:}"
+    local local_port="${temp%%:*}"
+    local remote_port="${entry##*:}"
+
+    local svc_name
+    svc_name=$(jq -r --arg key "$svc_key" '
+      .items[] |
+      select(.metadata.name | test($key; "i")) |
+      .metadata.name
+    ' "$svc_file" | head -n 1)
+
+    if [ -z "$svc_name" ]; then
+      echo "[⚠️] No match found for service: $svc_key in $namespace"
+      continue
+    fi
+
+    echo "[✅] Forwarding $namespace/$svc_name:$remote_port → localhost:$local_port"
+    kubectl port-forward "svc/$svc_name" "$local_port:$remote_port" -n "$namespace" > "/tmp/${svc_key}.log" 2>&1 &
+    echo $! >> "$STATE_FILE"
+  done
+}
+
 prepare() {
   SERVICE_SHORTNAME="$1"
   APP_SVC_NAME="${SERVICE_SHORTNAME}-openreplay"
 
-  SERVICES_LIST=(
+  DB_SERVICES=(
     "postgres:5432:5432"
     "clickhouse:9001:9000"
     "clickhouse:8140:8123"
@@ -39,31 +72,13 @@ prepare() {
     "minio:9002:9000"
   )
 
-  echo "[ℹ️] Discovering INFRA services in '$DB_NAMESPACE'..."
-  kubectl get svc -n "$DB_NAMESPACE" -o json > /tmp/svc_list.json
+  APP_SERVICES=(
+    "assist-api:9005:9001"
+  )
+
   : > "$STATE_FILE"
-
-  for entry in "${SERVICES_LIST[@]}"; do
-    svc_key="${entry%%:*}"
-    temp="${entry#*:}"
-    local_port="${temp%%:*}"
-    remote_port="${entry##*:}"
-
-    svc_name=$(jq -r --arg key "$svc_key" '
-      .items[] |
-      select(.metadata.name | test($key; "i")) |
-      .metadata.name
-    ' /tmp/svc_list.json | head -n 1)
-
-    if [ -z "$svc_name" ]; then
-      echo "[⚠️] No match found for INFRA service: $svc_key"
-      continue
-    fi
-
-    echo "[✅] Forwarding $svc_name:$remote_port → localhost:$local_port"
-    kubectl port-forward "svc/$svc_name" "$local_port:$remote_port" -n "$DB_NAMESPACE" > "/tmp/${svc_key}.log" 2>&1 &
-    echo $! >> "$STATE_FILE"
-  done
+  forward_services "$DB_NAMESPACE" "${DB_SERVICES[@]}"
+  forward_services "$APP_NAMESPACE" "${APP_SERVICES[@]}"
 
   sleep 2
   echo "[ℹ️] Getting env vars for app service: $APP_SVC_NAME"
@@ -110,10 +125,16 @@ prepare() {
     jwt_secret="openreplay"
   fi
 
-  ENV_VARS=$(echo "$ENV_OUTPUT" | jq -r '
-    .spec.template.spec.containers[].env[] |
-    "\(.name)=\(.value // "")"
+  ENV_NAMES=$(echo "$ENV_OUTPUT" | jq -r '
+    .spec.template.spec.containers[].env[].name
   ' 2>/dev/null)
+
+  ENV_VARS=""
+  while read -r name; do
+    [[ -z "$name" ]] && continue
+    value=$(get_env_value "$name")
+    ENV_VARS+="${name}=${value}"$'\n'
+  done <<< "$ENV_NAMES"
 
   echo "[ℹ️] Writing environment variables to $ENV_FILE"
   : > "$ENV_FILE"
@@ -157,9 +178,14 @@ prepare() {
   echo "BUCKET_NAME=spot" >> "$ENV_FILE"
   echo "KAFKA_MAX_POLL_INTERVAL_MS=300000" >> "$ENV_FILE"
   echo "KAFKA_USE_KERBEROS=false" >> "$ENV_FILE"
+  echo "ICE_SERVERS=\"stun:stun.l.google.com:19302\"" >> "$ENV_FILE"
+  echo "ASSIST_SECRET=\"test-assist-secret\"" >> "$ENV_FILE"
+  echo "ASSIST_TTL=\"48\"" >> "$ENV_FILE"
 
   while read -r line; do
+    [[ -z "$line" ]] && continue
     name="${line%%=*}"
+    [[ -z "$name" ]] && continue
     value="${line#*=}"
 
     case "$name" in
@@ -177,6 +203,9 @@ prepare() {
         ;;
       CLICKHOUSE_STRING)
         value="localhost:9001/default"
+        ;;
+      ASSIST_URL)
+        value="http://localhost:9005/assist/%s"
         ;;
       JWT_SECRET)
         continue
