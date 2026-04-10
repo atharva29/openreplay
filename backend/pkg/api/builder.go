@@ -157,7 +157,7 @@ func NewServiceBuilder(log logger.Logger, cfg *config.Config, webMetrics web.Web
 		return nil, err
 	}
 
-	apiKeyHandlers, err := api_key.NewHandlers(log, requestHandler, projects, usersService, analyticsEventsService, jobsService)
+	apiKeyHandlers, err := api_key.NewHandlers(log, requestHandler, projects, usersService, analyticsEventsService, jobsService, assistProxy, cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	config "openreplay/backend/internal/config/api"
 	"openreplay/backend/pkg/analytics/events"
 	eventsModel "openreplay/backend/pkg/analytics/events/model"
 	"openreplay/backend/pkg/analytics/filters"
 	"openreplay/backend/pkg/analytics/users"
 	usersModel "openreplay/backend/pkg/analytics/users/model"
+	"openreplay/backend/pkg/assist/proxy"
 	"openreplay/backend/pkg/jobs"
 	"openreplay/backend/pkg/logger"
 	"openreplay/backend/pkg/projects"
@@ -25,30 +27,35 @@ type handlersImpl struct {
 	users    users.Users
 	events   events.Events
 	jobs     jobs.Jobs
+	assist   proxy.Assist
+	cfg      *config.Config
 	handlers []*api.Description
 }
 
-func NewHandlers(log logger.Logger, req api.RequestHandler, projects projects.Projects, users users.Users, events events.Events, jobsService jobs.Jobs) (api.Handlers, error) {
+func NewHandlers(log logger.Logger, req api.RequestHandler, projects projects.Projects, users users.Users, events events.Events, jobsService jobs.Jobs, assist proxy.Assist, cfg *config.Config) (api.Handlers, error) {
 	h := &handlersImpl{
 		log:      log,
 		projects: projects,
 		users:    users,
 		events:   events,
 		jobs:     jobsService,
+		assist:   assist,
+		cfg:      cfg,
 	}
 	h.handlers = []*api.Description{
-		{"/v1/projects/{project}", "GET", req.Handle(h.getProject), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}", "GET", req.Handle(h.getProject), []string{api.PublicKeyPermission}, "api_get_project"},
 		{"/v1/projects", "GET", req.Handle(h.listProjects), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects", "POST", req.HandleWithBody(h.createProject), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects", "POST", req.HandleWithBody(h.createProject), []string{api.PublicKeyPermission}, "api_create_project"},
 		{"/v1/projects/{project}/users", "POST", req.HandleWithBody(h.searchUsers), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects/{project}/users/{userID}", "GET", req.Handle(h.getUser), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/users/{userID}", "GET", req.Handle(h.getUser), []string{api.PublicKeyPermission}, "api_get_user"},
 		{"/v1/projects/{project}/users/{userID}/sessions", "POST", req.HandleWithBody(h.getUserSessions), []string{api.PublicKeyPermission}, api.DoNotTrack},
 		{"/v1/projects/{project}/sessions/{sessionID}/events", "POST", req.HandleWithBody(h.searchEventsBySession), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects/{project}/users/{userID}", "DELETE", req.Handle(h.deleteUserData), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/users/{userID}", "DELETE", req.Handle(h.deleteUserData), []string{api.PublicKeyPermission}, "api_delete_user_data"},
 		{"/v1/projects/{project}/jobs", "GET", req.Handle(h.listJobs), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects/{project}/jobs/{jobID}", "GET", req.Handle(h.getJob), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects/{project}/jobs/{jobID}", "DELETE", req.Handle(h.cancelJob), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/v1/projects/{project}/jobs/{jobID}", "GET", req.Handle(h.getJob), []string{api.PublicKeyPermission}, "api_get_delete_job"},
+		{"/v1/projects/{project}/jobs/{jobID}", "DELETE", req.Handle(h.cancelJob), []string{api.PublicKeyPermission}, "api_cancel_delete_job"},
 	}
+	h.handlers = append(h.handlers, h.assistHandlers(req)...)
 	return h, nil
 }
 
