@@ -20,6 +20,8 @@ function UserList(props: Props) {
   const loading = useObserver(() => userStore.loading);
   const users = useObserver(() => userStore.list);
   const searchQuery = useObserver(() => userStore.searchQuery);
+  const isOwner = useObserver(() => userStore.account.superAdmin);
+  const currentUserId = useObserver(() => userStore.account.id);
   const { showModal } = useModal();
 
   const getList = (list: any) =>
@@ -80,9 +82,14 @@ function UserList(props: Props) {
                     e.stopPropagation();
                     userStore.copyInviteCode(user.userId);
                   }}
-                  onMakeOwner={(userId) => {
-                    userStore.makeOwner(userId);
-                  }}
+                  onMakeOwner={
+                    isOwner
+                      ? (userId) => {
+                          userStore.makeOwner(userId);
+                        }
+                      : undefined
+                  }
+                  currentUserId={currentUserId}
                   isEnterprise={isEnterprise}
                   isOnboarding={isOnboarding}
                 />

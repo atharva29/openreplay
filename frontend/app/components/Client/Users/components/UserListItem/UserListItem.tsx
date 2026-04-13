@@ -36,6 +36,7 @@ interface Props {
   copyInviteCode?: any;
   isEnterprise?: boolean;
   onMakeOwner?: (userId: string) => void;
+  currentUserId?: string;
 }
 function UserListItem(props: Props) {
   const {
@@ -46,8 +47,17 @@ function UserListItem(props: Props) {
     isEnterprise = false,
     isOnboarding = false,
     onMakeOwner,
+    currentUserId,
   } = props;
   const { t } = useTranslation();
+
+  const canMakeOwner = user.isJoined && user.userId !== currentUserId;
+
+  const makeOwnerTooltip = !user.isJoined
+    ? t('User has not accepted the invitation yet')
+    : user.userId === currentUserId
+      ? t('Cannot transfer ownership to yourself')
+      : t('Make Owner');
 
   const handleMakeOwner = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -131,11 +141,12 @@ function UserListItem(props: Props) {
           )}
 
           {!user.isSuperAdmin && onMakeOwner && (
-            <Tooltip title={t('Make Owner')}>
+            <Tooltip title={makeOwnerTooltip}>
               <Button
                 type="text"
                 icon={<Icon name="user-switch" />}
                 onClick={handleMakeOwner}
+                disabled={!canMakeOwner}
               />
             </Tooltip>
           )}
