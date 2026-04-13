@@ -17,9 +17,9 @@ import (
 
 func (h *handlersImpl) assistHandlers(req api.RequestHandler) []*api.Description {
 	return []*api.Description{
-		{"/v1/assist/credentials", "GET", req.Handle(h.getAssistCredentials), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects/{project}/assist/sessions", "GET", req.Handle(h.getAssistSessions), []string{api.PublicKeyPermission}, api.DoNotTrack},
-		{"/v1/projects/{project}/assist/sessions", "POST", req.HandleWithBody(h.searchAssistSessions), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/public/assist/credentials", "GET", req.Handle(h.getAssistCredentials), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/public/{project}/assist/sessions", "GET", req.Handle(h.getAssistSessions), []string{api.PublicKeyPermission}, api.DoNotTrack},
+		{"/public/{project}/assist/sessions", "POST", req.HandleWithBody(h.searchAssistSessions), []string{api.PublicKeyPermission}, api.DoNotTrack},
 	}
 }
 
