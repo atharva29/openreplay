@@ -1,3 +1,7 @@
+## 11.0.13
+
+- prevent disconnects on page reload
+
 ## 11.0.12
 
 - fixes for answer icon
