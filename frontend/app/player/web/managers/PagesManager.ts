@@ -18,6 +18,8 @@ export default class PagesManager extends ListWalker<DOMManager> {
 
   private globalDictionary: Map<string, string> = new Map();
 
+  private potentialMessages: any[] = [];
+
   constructor(
     private screen: Screen,
     private isMobile: boolean,
@@ -71,10 +73,16 @@ export default class PagesManager extends ListWalker<DOMManager> {
           showVModeBadge: this.showVModeBadge,
         }),
       );
+      if (this.potentialMessages.length > 0) {
+        const fitting = this.potentialMessages.filter((msg) => msg.time === m.time);
+        fitting.forEach((msg) => this.appendMessage(msg));
+        this.potentialMessages.length = 0;
+      }
       this.falseOrder = false;
     }
     if (this.last === null) {
-      logger.warn('DOMMessage before any document created, skipping:', m);
+      logger.warn('DOMMessage before any document created, filling back array:', m);
+      this.potentialMessages.push(m);
       return;
     }
 
