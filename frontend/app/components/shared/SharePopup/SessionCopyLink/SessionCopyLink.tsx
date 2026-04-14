@@ -11,11 +11,10 @@ function SessionCopyLink({ time }: { time: number }) {
 
   const copyHandler = () => {
     setCopied(true);
-    copy(
-      `${window.location.origin + window.location.pathname}?jumpto=${Math.round(
-        time,
-      )}`,
-    );
+    const hasTime = Boolean(time) && !isNaN(time);
+    const timeStr = hasTime ? `?jumpto=${Math.round(time)}` : '';
+    copy(`${window.location.origin + window.location.pathname}${timeStr}`);
+
     setTimeout(() => {
       setCopied(false);
     }, 1000);

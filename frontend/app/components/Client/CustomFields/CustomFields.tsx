@@ -59,13 +59,14 @@ function CustomFields() {
           }
         >
           <Button
-            icon={<PlusIcon size={18} />}
             type="primary"
             size="small"
             disabled={remaining === 0}
             onClick={() => handleInit()}
+            className="flex! items-center! gap-1!"
           >
-            {t('Add Metadata')}
+            <PlusIcon size={16} />
+            <span>{t('Add Metadata')}</span>
           </Button>
         </Tooltip>
         {/* {remaining === 0 && <Icon name="info-circle" size={16} color="black" />} */}

@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { toast } from 'react-toastify';
-import { Icon, Loader } from 'UI';
 import { Button, Divider, Form, Input, Segmented, Select, Space } from 'antd';
 import { observer } from 'mobx-react-lite';
-import { useStore } from 'App/mstore';
-import SessionCopyLink from './SessionCopyLink';
-import IntegrateSlackButton from '../IntegrateSlackButton/IntegrateSlackButton';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'react-toastify';
+
+import { useStore } from 'App/mstore';
 import { signalService } from 'App/services';
+import { Icon, Loader } from 'UI';
+
+import IntegrateSlackButton from '../IntegrateSlackButton/IntegrateSlackButton';
+import SessionCopyLink from './SessionCopyLink';
 
 interface Channel {
   webhookId: string;
@@ -254,9 +256,7 @@ const ShareModalComp: React.FC<Props> = ({ showCopyLink, hideModal, time }) => {
                     <Button type="primary" onClick={sendMsg}>
                       {t('Send')}
                     </Button>
-                    <Button type="primary" ghost onClick={hideModal}>
-                      {t('Cancel')}
-                    </Button>
+                    <Button onClick={hideModal}>{t('Cancel')}</Button>
                   </Space>
                 </Form.Item>
               </Form>
