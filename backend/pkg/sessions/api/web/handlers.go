@@ -283,6 +283,7 @@ func (e *handlersImpl) startSessionHandlerWeb(w http.ResponseWriter, r *http.Req
 		CanvasImageQuality:   e.cfg.CanvasQuality,
 		CanvasFrameRate:      e.cfg.CanvasFps,
 		FramesSupport:        true,
+		ProtocolVersion:      e.cfg.ProtocolVersion,
 	}
 	modifyResponse(req, startResponse)
 
@@ -304,6 +305,11 @@ func (e *handlersImpl) pushMessagesHandlerWeb(w http.ResponseWriter, r *http.Req
 	if batch := r.URL.Query().Get("batch"); batch != "" {
 		r = r.WithContext(context.WithValue(r.Context(), "batch", batch))
 	}
+	batchType := r.Header.Get("DataType")
+	if batchType == "" {
+		batchType = "all"
+	}
+	r = r.WithContext(context.WithValue(r.Context(), "batchType", batchType))
 
 	// Check authorization
 	sessionData, err := e.tokenizer.ParseFromHTTPRequest(r)
@@ -346,8 +352,14 @@ func (e *handlersImpl) pushMessagesHandlerWeb(w http.ResponseWriter, r *http.Req
 	}
 	bodySize = len(bodyBytes)
 
-	// Send processed messages to queue as array of bytes
-	err = e.producer.Produce(e.cfg.TopicRawWeb, sessionData.ID, bodyBytes)
+	topic := e.cfg.TopicRawWeb
+	switch batchType {
+	case "assets":
+		topic = e.cfg.TopicRawAssets
+	default: // "analytics", "devtools", "replay"
+		topic = e.cfg.TopicRawWeb
+	}
+	err = e.producer.Produce(topic, sessionData.ID, bodyBytes)
 	if err != nil {
 		e.log.Error(r.Context(), "can't send messages batch to queue: %s", err)
 		errCode := http.StatusInternalServerError

@@ -139,7 +139,7 @@ func (i *messageIteratorImpl) preprocessing(msg Message) error {
 		if i.messageInfo.Index > 1 { // Might be several 0-0 BatchMeta in a row without an error though
 			return fmt.Errorf("batchMetadata found at the end of the batch, info: %s", i.batchInfo.Info())
 		}
-		if m.Version > 1 {
+		if m.Version > 5 {
 			return fmt.Errorf("incorrect batch version: %d, skip current batch, info: %s", i.version, i.batchInfo.Info())
 		}
 		i.messageInfo.Index = m.PageNo<<32 + m.FirstIndex // 2^32  is the maximum count of messages per page (ha-ha)
@@ -150,6 +150,7 @@ func (i *messageIteratorImpl) preprocessing(msg Message) error {
 		i.messageInfo.Url = m.Location
 		i.version = m.Version
 		i.batchInfo.version = m.Version
+		i.batchInfo.dataTs = m.Timestamp
 
 	case *Timestamp:
 		i.messageInfo.Timestamp = m.Timestamp
@@ -193,6 +194,6 @@ func (i *messageIteratorImpl) preprocessing(msg Message) error {
 	return nil
 }
 
-func messageHasSize(msgType uint64) bool {
-	return !(msgType == 80 || msgType == 81 || msgType == 82)
+func MessageHasSize(msgType uint64) bool {
+	return msgType != 81
 }

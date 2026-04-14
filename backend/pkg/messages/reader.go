@@ -55,7 +55,7 @@ func (m *messageReaderImpl) Parse() (err error) {
 		}
 
 		// Read message body (and decode if protocol version less than 1)
-		if m.version > 0 && messageHasSize(m.msgType) {
+		if m.version > 0 && MessageHasSize(m.msgType) {
 			// Read message size if it is a new protocol version
 			m.msgSize, err = m.reader.ReadSize()
 			if err != nil {
@@ -63,7 +63,6 @@ func (m *messageReaderImpl) Parse() (err error) {
 			}
 
 			// Try to avoid EOF error
-
 			curr := m.reader.Pointer()
 			if len(m.data)-int(curr) < int(m.msgSize) {
 				return fmt.Errorf("can't read message body")
@@ -97,7 +96,7 @@ func (m *messageReaderImpl) Parse() (err error) {
 				case *BatchMetadata:
 					m.version = int(message.Version)
 				}
-				if m.version != 1 {
+				if m.version < 1 || m.version > 5 {
 					// Unsupported tracker version, reset reader
 					m.list = m.list[:0]
 					m.reader.SetPointer(0)

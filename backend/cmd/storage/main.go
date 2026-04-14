@@ -9,8 +9,6 @@ import (
 	"time"
 
 	config "openreplay/backend/internal/config/storage"
-	"openreplay/backend/internal/storage"
-	"openreplay/backend/pkg/failover"
 	"openreplay/backend/pkg/health"
 	"openreplay/backend/pkg/logger"
 	"openreplay/backend/pkg/messages"
@@ -19,6 +17,7 @@ import (
 	"openreplay/backend/pkg/objectstorage/store"
 	"openreplay/backend/pkg/queue"
 	"openreplay/backend/pkg/queue/types"
+	"openreplay/backend/pkg/storage"
 )
 
 func main() {
@@ -39,12 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatal(ctx, "can't init storage service: %s", err)
 	}
-
 	counter := storage.NewLogCounter()
-	sessionFinder, err := failover.NewSessionFinder(log, cfg, srv)
-	if err != nil {
-		log.Fatal(ctx, "can't init sessionFinder module: %s", err)
-	}
 
 	consumer, err := queue.NewConsumer(
 		log,
@@ -65,16 +59,15 @@ func main() {
 				}
 				sessCtx := context.WithValue(context.Background(), "sessionID", fmt.Sprintf("%d", msg.SessionID()))
 				if msg.TypeID() == messages.MsgCleanSession {
-					if err := srv.CleanSession(sessCtx, msg.SessionID()); err != nil {
-						log.Error(sessCtx, "can't clean session: %s", err)
+					if err := srv.Clean(sessCtx, msg.SessionID()); err != nil {
+						log.Debug(sessCtx, "can't clean session: %s", err)
 					}
 					return
 				}
 				// Process session to save mob files to s3
-				sesEnd := msg.(*messages.SessionEnd)
-				if err := srv.Process(sessCtx, sesEnd); err != nil {
+				sessEnd := msg.(*messages.SessionEnd)
+				if err := srv.Upload(sessCtx, sessEnd.SessionID(), sessEnd.EncryptionKey); err != nil {
 					log.Error(sessCtx, "process session err: %s", err)
-					sessionFinder.Find(msg.SessionID(), sesEnd.Timestamp)
 				}
 				// Log timestamp of last processed session
 				counter.Update(msg.SessionID(), time.UnixMilli(msg.Meta().Batch().Timestamp()))
@@ -104,7 +97,6 @@ func main() {
 		select {
 		case sig := <-sigchan:
 			log.Info(ctx, "caught signal %v: terminating", sig)
-			sessionFinder.Stop()
 			srv.Wait()
 			consumer.Close()
 			os.Exit(0)
