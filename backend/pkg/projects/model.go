@@ -1,24 +1,25 @@
 package projects
 
 type Project struct {
-	ProjectID           uint32
-	ProjectKey          string
-	TenantID            int
-	MaxSessionDuration  int64
-	SampleRate          byte
-	SaveRequestPayloads bool
-	BeaconSize          int64
-	Platform            string
-	Metadata1           *string
-	Metadata2           *string
-	Metadata3           *string
-	Metadata4           *string
-	Metadata5           *string
-	Metadata6           *string
-	Metadata7           *string
-	Metadata8           *string
-	Metadata9           *string
-	Metadata10          *string
+	ProjectID           uint32  `json:"projectId"`
+	Name                string  `json:"name"`
+	ProjectKey          string  `json:"projectKey"`
+	TenantID            int     `json:"tenantId"`
+	MaxSessionDuration  int64   `json:"maxSessionDuration"`
+	SampleRate          byte    `json:"sampleRate"`
+	SaveRequestPayloads bool    `json:"saveRequestPayloads"`
+	BeaconSize          int64   `json:"beaconSize"`
+	Platform            string  `json:"platform"`
+	Metadata1           *string `json:"metadata1"`
+	Metadata2           *string `json:"metadata2"`
+	Metadata3           *string `json:"metadata3"`
+	Metadata4           *string `json:"metadata4"`
+	Metadata5           *string `json:"metadata5"`
+	Metadata6           *string `json:"metadata6"`
+	Metadata7           *string `json:"metadata7"`
+	Metadata8           *string `json:"metadata8"`
+	Metadata9           *string `json:"metadata9"`
+	Metadata10          *string `json:"metadata10"`
 }
 
 func (p *Project) GetMetadataNo(key string) uint {
@@ -56,6 +57,11 @@ func (p *Project) GetMetadataNo(key string) uint {
 		return 10
 	}
 	return 0
+}
+
+var ValidPlatforms = map[string]bool{
+	"web": true,
+	"ios": true,
 }
 
 func (p *Project) IsMobile() bool {

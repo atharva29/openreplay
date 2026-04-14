@@ -12,6 +12,7 @@ import (
 	"github.com/klauspost/compress/gzip"
 
 	"openreplay/backend/pkg/logger"
+	"openreplay/backend/pkg/server/tenant"
 	"openreplay/backend/pkg/server/user"
 )
 
@@ -50,6 +51,18 @@ func GetSessionID(r *http.Request) (uint64, error) {
 
 func GetUser(r *http.Request) *user.User {
 	return r.Context().Value("userData").(*user.User)
+}
+
+func GetTenantID(r *http.Request) (int, error) {
+	v := r.Context().Value("tenantData")
+	if v == nil {
+		return 0, fmt.Errorf("missing tenant data in request context")
+	}
+	t, ok := v.(*tenant.Tenant)
+	if !ok {
+		return 0, fmt.Errorf("invalid tenant data in request context")
+	}
+	return t.TenantID, nil
 }
 
 func ReadBody(log logger.Logger, w http.ResponseWriter, r *http.Request, limit int64) ([]byte, error) {

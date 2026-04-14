@@ -22,6 +22,7 @@ type Users interface {
 	UpdateUser(ctx context.Context, projID uint32, user *model.UserRequest) (*model.User, error)
 	DeleteUser(ctx context.Context, projID uint32, userID string) error
 	GetUserActivity(ctx context.Context, projID uint32, userID string, req *model.UserActivityRequest) (*model.UserActivityResponse, error)
+	GetUserSessions(ctx context.Context, projID uint32, userID string, req *model.UserSessionsRequest) (*model.UserSessionsResponse, error)
 }
 
 type usersImpl struct {
@@ -535,5 +536,73 @@ func (u *usersImpl) GetUserActivity(ctx context.Context, projID uint32, userID s
 	return &model.UserActivityResponse{
 		Total:  total,
 		Events: events,
+	}, nil
+}
+
+func (u *usersImpl) GetUserSessions(ctx context.Context, projID uint32, userID string, req *model.UserSessionsRequest) (*model.UserSessionsResponse, error) {
+	if userID == "" {
+		return nil, errors.New("user_id is required")
+	}
+
+	if req.Limit == 0 {
+		req.Limit = filters.DefaultLimit
+	}
+	if req.Page == 0 {
+		req.Page = filters.DefaultPage
+	}
+
+	offset := filters.CalculateOffset(req.Page, req.Limit)
+	sortOrder := filters.ValidateSortOrder(string(req.SortOrder))
+
+	startTime := filters.ConvertMillisToTime(req.StartDate)
+	endTime := filters.ConvertMillisToTime(req.EndDate)
+
+	query := fmt.Sprintf(`
+		SELECT COUNT(*) OVER() as total_count,
+			e.session_id,
+			count(*) AS events_count,
+			min(e.created_at) AS start_ts,
+			max(e.created_at) AS end_ts
+		FROM product_analytics.events AS e
+		WHERE e.project_id = ?
+			AND e."$user_id" = ?
+			AND e.created_at >= ?
+			AND e.created_at <= ?
+		GROUP BY e.session_id
+		ORDER BY start_ts %s
+		LIMIT ? OFFSET ?`,
+		strings.ToUpper(string(sortOrder)))
+
+	rows, err := u.chConn.Query(ctx, query, projID, userID, startTime, endTime, req.Limit, offset)
+	if err != nil {
+		u.log.Error(ctx, "failed to query user sessions: %v", err)
+		return nil, fmt.Errorf("failed to query user sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var total uint64
+	var sessions []model.UserSession
+	for rows.Next() {
+		s := model.UserSession{}
+		var startTs, endTs time.Time
+
+		if err := rows.Scan(&total, &s.SessionID, &s.EventsCount, &startTs, &endTs); err != nil {
+			u.log.Error(ctx, "failed to scan session row: %v", err)
+			return nil, fmt.Errorf("failed to scan session row: %w", err)
+		}
+
+		s.StartTs = filters.ConvertTimeToMillis(startTs)
+		s.EndTs = filters.ConvertTimeToMillis(endTs)
+		sessions = append(sessions, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		u.log.Error(ctx, "error iterating session rows: %v", err)
+		return nil, fmt.Errorf("error iterating session rows: %w", err)
+	}
+
+	return &model.UserSessionsResponse{
+		Total:    total,
+		Sessions: sessions,
 	}, nil
 }

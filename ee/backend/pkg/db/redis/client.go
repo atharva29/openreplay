@@ -1,10 +1,10 @@
 package redis
 
 import (
+	"context"
 	"errors"
 	"strings"
 
-	"github.com/docker/distribution/context"
 	"github.com/redis/go-redis/v9"
 
 	config "openreplay/backend/internal/config/redis"

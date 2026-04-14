@@ -29,6 +29,9 @@ func (p *permissionsImpl) Middleware(next http.Handler) http.Handler {
 }
 
 func (p *permissionsImpl) checkPermissions(r *http.Request) error {
+	if r.Context().Value("tenantData") != nil {
+		return nil
+	}
 	user := api.GetUser(r)
 	if user == nil {
 		return fmt.Errorf("unauthorized request, no user's data")

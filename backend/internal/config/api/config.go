@@ -32,6 +32,8 @@ type Config struct {
 	AssistJwtAlgorithm    string        `env:"JWT_ALGORITHM,default=HS512"`
 	AssistJwtIssuer       string        `env:"JWT_ISSUER,default=openreplay"`
 	AssistJwtExpiration   int64         `env:"ASSIST_JWT_EXPIRATION,default=144000"`
+	AssistSecret          string        `env:"ASSIST_SECRET"`
+	AssistTTL             int           `env:"ASSIST_TTL,default=48"`
 	WorkerID              uint16
 }
 
