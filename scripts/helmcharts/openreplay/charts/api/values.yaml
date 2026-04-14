@@ -67,7 +67,6 @@ ingress:
   enabled: true
   className: "{{ .Values.global.ingress.controller.ingressClassResource.name }}"
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.org/proxy-connect-timeout: "120s"
     nginx.org/proxy-send-timeout: "300s"
     nginx.org/proxy-read-timeout: "300s"

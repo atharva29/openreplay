@@ -18,12 +18,6 @@ metadata:
     {{- end }}
 spec:
   ingressClassName: "{{ tpl .Values.ingress.className . }}"
-  tls:
-    - hosts:
-        - {{ .Values.global.domainName }}
-      {{- if .Values.ingress.tls.secretName}}
-      secretName: {{ .Values.ingress.tls.secretName }}
-      {{- end }}
   rules:
     - host: {{ .Values.global.domainName }}
       http:
