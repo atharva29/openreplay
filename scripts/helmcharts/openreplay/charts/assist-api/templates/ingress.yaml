@@ -17,7 +17,7 @@ metadata:
     {{- end }}
     {{- end }}
 spec:
-  ingressClassName: "{{ tpl .Values.ingress.className . }}"
+  ingressClassName: {{ tpl .Values.ingress.className . }}
   rules:
     - host: {{ .Values.global.domainName }}
       http:
