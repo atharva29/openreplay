@@ -114,10 +114,7 @@ export default class MessageLoader {
           }
         });
 
-        const sortedMsgs = msgs
-          // .sort((m1, m2) => m1.time - m2.time)
-          .sort(brokenDomSorter)
-          .sort(sortIframes);
+        const sortedMsgs = fixMessageOrder(msgs).sort(sortIframes);
 
         if (brokenMessages > 0) {
           console.warn(
@@ -347,38 +344,99 @@ export default class MessageLoader {
   }
 }
 
-const DOMMessages = [
-  MType.CreateElementNode,
-  MType.CreateTextNode,
-  MType.MoveNode,
-  MType.CreateIFrameDocument,
-];
+/**
+ * Priority tiers for ordering messages within same-timestamp groups.
+ * Uses bucket sort instead of comparator-based sort to avoid
+ * native V8 TimSort transitivity issues on large (20k+) arrays.
+ *
+ * CREATE -> MODIFY -> DELETE
+ */
+export function getMsgPriority(tp: number): number {
+  switch (tp) {
+    case MType.CreateDocument:
+      return 0;
+    case MType.SetPageLocation:
+    case MType.SetPageLocationDeprecated:
+      return 1;
+    case MType.CreateElementNode:
+    case MType.CreateTextNode:
+    case MType.CreateIFrameDocument:
+      return 2;
+    case MType.SetNodeAttribute:
+    case MType.SetNodeAttributeURLBased:
+    case MType.SetNodeAttributeDictGlobal:
+    case MType.SetNodeAttributeDict:
+    case MType.SetNodeAttributeDictDeprecated:
+    case MType.RemoveNodeAttribute:
+    case MType.SetNodeData:
+    case MType.SetCssData:
+    case MType.SetCssDataURLBased:
+    case MType.SetNodeSlot:
+    case MType.LoadFontFace:
+    case MType.NodeAnimationResult:
+      return 3;
+    case MType.AdoptedSsAddOwner:
+      return 4;
+    case MType.AdoptedSsInsertRule:
+    case MType.AdoptedSsInsertRuleURLBased:
+    case MType.AdoptedSsReplace:
+    case MType.AdoptedSsReplaceURLBased:
+    case MType.AdoptedSsDeleteRule:
+      return 5;
+    case MType.MoveNode:
+      return 6;
+    case MType.RemoveNode:
+    case MType.AdoptedSsRemoveOwner:
+      return 8;
+    default:
+      return 7;
+  }
+}
 
-// fixed times: 3
-function brokenDomSorter(m1: PlayerMsg, m2: PlayerMsg) {
-  if (m1.time !== m2.time) return m1.time - m2.time;
+const BUCKET_COUNT = 9;
 
-  // if (m1.tp === MType.CreateDocument && m2.tp !== MType.CreateDocument)
-  //   return -1;
-  // if (m1.tp !== MType.CreateDocument && m2.tp === MType.CreateDocument)
-  //   return 1;
+export function needsSorting(msgs: PlayerMsg[], start: number, end: number): boolean {
+  let maxPriority = -1;
+  for (let i = start; i < end; i++) {
+    const p = getMsgPriority(msgs[i].tp);
+    if (p < maxPriority) return true;
+    maxPriority = p;
+  }
+  return false;
+}
 
-  // if (m1.tp === MType.RemoveNode)
-  //   return 1;
-  // if (m2.tp === MType.RemoveNode)
-  //   return -1;
+export function sortTimeGroup(msgs: PlayerMsg[], start: number, end: number) {
+  const buckets: PlayerMsg[][] = [];
+  for (let b = 0; b < BUCKET_COUNT; b++) buckets.push([]);
+  for (let i = start; i < end; i++) {
+    buckets[getMsgPriority(msgs[i].tp)].push(msgs[i]);
+  }
+  let idx = start;
+  for (let b = 0; b < BUCKET_COUNT; b++) {
+    const bucket = buckets[b];
+    for (let j = 0; j < bucket.length; j++) {
+      msgs[idx++] = bucket[j];
+    }
+  }
+}
 
-  // const m1IsDOM = DOMMessages.includes(m1.tp);
-  // const m2IsDOM = DOMMessages.includes(m2.tp);
-  // if (m1IsDOM && m2IsDOM) {
-  //   // @ts-ignore DOM msg has id but checking for 'id' in m is expensive
-  //   return m1.id - m2.id;
-  // }
+export function fixMessageOrder(msgs: PlayerMsg[]): PlayerMsg[] {
+  msgs.sort((a, b) => a.time - b.time);
 
-  // if (m1IsDOM && !m2IsDOM) return -1;
-  // if (!m1IsDOM && m2IsDOM) return 1;
+  let i = 0;
+  while (i < msgs.length) {
+    const time = msgs[i].time;
+    let j = i + 1;
+    while (j < msgs.length && msgs[j].time === time) j++;
 
-  return 0;
+    if (j - i > 1 && needsSorting(msgs, i, j)) {
+      sortTimeGroup(msgs, i, j);
+    }
+
+    i = j;
+  }
+
+  return msgs;
 }
 
 function sortIframes(m1, m2) {
