@@ -55,7 +55,7 @@ function getRecordingSettings(qualityValue) {
   const { audioBitsPerSecond, videoBitsPerSecond, width, height } =
     settingsMap[qualityValue] || defaultSettings;
 
-  const duration = 3 * 60 * 1000; // 3 minutes
+  const duration = 30 * 60 * 1000; // 30 minutes
 
   const mimeTypes = [
     'video/webm;codecs=vp9,opus',

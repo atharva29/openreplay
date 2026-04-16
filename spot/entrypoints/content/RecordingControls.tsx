@@ -56,7 +56,7 @@ function RecordingControls({
   const createTimer = () => {
     return setInterval(() => {
       const timeDelta = time() + 1000;
-      if (timeDelta > 3 * 60 * 1000) {
+      if (timeDelta > 30 * 60 * 1000) {
         void onEnd();
         return;
       } else {
