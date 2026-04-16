@@ -36,7 +36,7 @@ func NewUsers(log logger.Logger, conn driver.Conn, sessions sessions.Sessions) (
 
 var (
 	insertQuery = `INSERT INTO product_analytics.users (project_id, "$user_id", "$email", "$name", "$first_name", "$last_name", "$phone", "$avatar", properties, group_id1, group_id2, group_id3, group_id4, group_id5, group_id6, "$sdk_edition", "$sdk_version", "$current_url", "$initial_referrer", "$referring_domain", initial_utm_source, initial_utm_medium, initial_utm_campaign, "$country", "$state", "$city", "$or_api_endpoint", "$created_at", "$first_event_at", "$last_seen") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	selectQuery = `SELECT project_id, "$user_id", "$email", "$name", "$first_name", "$last_name", "$phone", "$avatar", properties, group_id1, group_id2, group_id3, group_id4, group_id5, group_id6, "$sdk_edition", "$sdk_version", "$current_url", "$initial_referrer", "$referring_domain", initial_utm_source, initial_utm_medium, initial_utm_campaign, "$country", "$state", "$city", "$or_api_endpoint", "$first_event_at" from product_analytics.users WHERE project_id = ? AND "$user_id" = ? LIMIT 1`
+	selectQuery = `SELECT project_id, "$user_id", "$email", "$name", "$first_name", "$last_name", "$phone", "$avatar", properties, group_id1, group_id2, group_id3, group_id4, group_id5, group_id6, "$sdk_edition", "$sdk_version", "$current_url", "$initial_referrer", "$referring_domain", initial_utm_source, initial_utm_medium, initial_utm_campaign, "$country", "$state", "$city", "$or_api_endpoint", "$created_at", "$first_event_at", "$last_seen" from product_analytics.users WHERE project_id = ? AND "$user_id" = ? LIMIT 1`
 )
 
 func (u *usersImpl) Add(session *sessions.Session, user *model.User) error {
@@ -73,7 +73,7 @@ func (u *usersImpl) Add(session *sessions.Session, user *model.User) error {
 }
 
 func (u *usersImpl) add(session *sessions.Session, user *model.User) error {
-	u.log.Info(context.Background(), "sess: %d,user to insert: %+v", session.SessionID, user)
+	u.log.Debug(context.Background(), "sess: %d,user to insert: %+v", session.SessionID, user)
 	if err := u.conn.Exec(context.Background(), insertQuery,
 		session.ProjectID,
 		user.UserID,
@@ -132,7 +132,7 @@ func (u *usersImpl) Get(projectID uint32, userID string) (*model.User, error) {
 }
 
 func (u *usersImpl) Update(user *model.User) error {
-	u.log.Info(context.Background(), "user to update: %+v", user)
+	u.log.Debug(context.Background(), "user to update: %+v", user)
 	if err := u.conn.Exec(context.Background(), insertQuery,
 		user.ProjectID,
 		user.UserID,

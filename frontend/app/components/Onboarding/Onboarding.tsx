@@ -1,33 +1,29 @@
+import { AppWindow, Smartphone } from 'lucide-react';
 import React from 'react';
-import { Redirect, Route, RouteComponentProps, Switch } from 'react-router';
-import { withRouter } from 'react-router-dom';
-import { OB_TABS, onboarding as onboardingRoute, withSiteId } from 'App/routes';
+import { useTranslation } from 'react-i18next';
+
+import { PANEL_SIZES } from 'App/constants/panelSizes';
+import { OB_DEFAULT_TAB, OB_TABS, onboarding as onboardingRoute, withSiteId } from 'App/routes';
+import { useNavigate, useParams } from 'App/routing';
+
 import IdentifyUsersTab from './components/IdentifyUsersTab';
 import InstallOpenReplayTab from './components/InstallOpenReplayTab';
 import IntegrationsTab from './components/IntegrationsTab';
 import ManageUsersTab from './components/ManageUsersTab';
 import SideMenu from './components/SideMenu';
-import { useTranslation } from 'react-i18next';
-import { Smartphone, AppWindow } from 'lucide-react';
-import { PANEL_SIZES } from 'App/constants/panelSizes';
-
-interface Props {
-  match: {
-    params: {
-      activeTab: string;
-      siteId: string;
-    };
-  };
-  history: RouteComponentProps['history'];
-}
 
 const platformMap = {
   ios: 'mobile',
   web: 'web',
 };
 
-function Onboarding(props: Props) {
+function Onboarding() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { activeTab = '', siteId = '' } = useParams<{
+    activeTab?: string;
+    siteId?: string;
+  }>();
   const platforms = [
     {
       label: (
@@ -49,57 +45,56 @@ function Onboarding(props: Props) {
     } as const,
   ] as const;
   const [platform, setPlatform] = React.useState(platforms[0]);
-  const {
-    match: {
-      params: { activeTab, siteId },
-    },
-  } = props;
-
-  const route = (path: string) => withSiteId(onboardingRoute(path));
 
   const onMenuItemClick = (tab: string) => {
-    props.history.push(withSiteId(onboardingRoute(tab), siteId));
+    navigate(withSiteId(onboardingRoute(tab), siteId));
+  };
+
+  const resolvedTab = activeTab || OB_DEFAULT_TAB;
+
+  React.useEffect(() => {
+    if (!activeTab) {
+      navigate(withSiteId(onboardingRoute(OB_DEFAULT_TAB), siteId), { replace: true });
+    }
+  }, [activeTab, siteId, navigate]);
+
+  const renderTab = () => {
+    switch (resolvedTab) {
+      case OB_TABS.IDENTIFY_USERS:
+        return (
+          <IdentifyUsersTab
+            platforms={platforms}
+            platform={platform}
+            setPlatform={setPlatform}
+            platformMap={platformMap}
+          />
+        );
+      case OB_TABS.MANAGE_USERS:
+        return <ManageUsersTab />;
+      case OB_TABS.INTEGRATIONS:
+        return <IntegrationsTab />;
+      case OB_TABS.INSTALLING:
+      default:
+        return (
+          <InstallOpenReplayTab
+            platforms={platforms}
+            platform={platform}
+            setPlatform={setPlatform}
+            platformMap={platformMap}
+          />
+        );
+    }
   };
 
   return (
     <div className="flex relative">
-      <SideMenu activeTab={activeTab} onClick={onMenuItemClick} />
+      <SideMenu activeTab={resolvedTab} onClick={onMenuItemClick} />
       <div className="w-full">
         <div
           className="bg-white w-full rounded-lg mx-auto mb-8 border"
           style={{ maxWidth: PANEL_SIZES.maxWidth }}
         >
-          <Switch>
-            <Route exact strict path={route(OB_TABS.INSTALLING)}>
-              <InstallOpenReplayTab
-                platforms={platforms}
-                platform={platform}
-                setPlatform={setPlatform}
-                platformMap={platformMap}
-              />
-            </Route>
-            <Route exact strict path={route(OB_TABS.IDENTIFY_USERS)}>
-              <IdentifyUsersTab
-                platforms={platforms}
-                platform={platform}
-                setPlatform={setPlatform}
-                platformMap={platformMap}
-              />
-            </Route>
-            <Route
-              exact
-              strict
-              path={route(OB_TABS.MANAGE_USERS)}
-              component={ManageUsersTab}
-            />
-            <Route
-              exact
-              strict
-              path={route(OB_TABS.INTEGRATIONS)}
-              component={IntegrationsTab}
-            />
-            <Redirect to={route(OB_TABS.INSTALLING)} />
-          </Switch>
+          {renderTab()}
         </div>
       </div>
       {/* <div className="py-6 px-4 w-full flex items-center fixed bottom-0 bg-white border-t z-10">
@@ -111,4 +106,4 @@ function Onboarding(props: Props) {
   );
 }
 
-export default withRouter(Onboarding);
+export default Onboarding;

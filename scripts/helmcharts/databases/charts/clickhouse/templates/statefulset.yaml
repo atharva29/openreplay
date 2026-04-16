@@ -26,6 +26,20 @@ spec:
       serviceAccountName: {{ include "clickhouse.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.kernelTuning.thp.enabled }}
+      initContainers:
+        - name: set-thp
+          image: busybox:1.37
+          volumeMounts:
+            - name: host-sys
+              mountPath: /host-sys
+          command:
+            - sh
+            - -c
+            - echo {{ .Values.kernelTuning.thp.mode }} > /host-sys/kernel/mm/transparent_hugepage/enabled
+          securityContext:
+            privileged: true
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}-backup
           env:
@@ -80,9 +94,9 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-          - containerPort: 9000
-            name: web
           - containerPort: 8123
+            name: web
+          - containerPort: 9000
             name: data
           volumeMounts:
           - name: default-chi-openreplay-clickhouse-replicated-0-0-0 
@@ -117,6 +131,11 @@ spec:
           configMap:
             name: clickhouse-user-override
             optional: true
+        {{- if .Values.kernelTuning.thp.enabled }}
+        - name: host-sys
+          hostPath:
+            path: /sys
+        {{- end }}
   volumeClaimTemplates:
   - metadata:
       name: default-chi-openreplay-clickhouse-replicated-0-0-0

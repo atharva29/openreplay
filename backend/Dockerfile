@@ -69,6 +69,7 @@ ENV TZ=UTC \
   GROUP_CANVAS_IMAGE=canvas-image \
   GROUP_CANVAS_VIDEO=canvas-video \
   GROUP_ANALYTICS=analytics \
+  GROUP_CLEANUP=cleaner \
   AWS_REGION_WEB=eu-central-1 \
   AWS_REGION_IOS=eu-west-1 \
   AWS_REGION_ASSETS=eu-central-1 \
@@ -108,7 +109,8 @@ ENV TZ=UTC \
   BUCKET_NAME="spots" \
   IS_FEATURE_FLAG_ENABLED=false \
   IS_USABILITY_TEST_ENABLED=false \
-  REDIS_STREAMS_TTL_SEC=14400
+  # We'll default to max length based trimming than, time based, because its deterministic
+  REDIS_STREAMS_TTL_SEC=0
 
 
 RUN if [ "$SERVICE_NAME" = "http" ]; then \

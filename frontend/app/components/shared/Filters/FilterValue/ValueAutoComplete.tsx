@@ -1,34 +1,37 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  memo,
-} from 'react';
-import { debounceCall } from 'App/utils';
-import { useStore } from 'App/mstore';
-import { observer } from 'mobx-react-lite';
-import { searchService } from 'App/services';
+import { TopValue } from '@/mstore/filterStore';
+import { CloseCircleFilled, RedoOutlined } from '@ant-design/icons';
 import {
   Button,
   Checkbox,
-  Input,
-  Tooltip,
-  Popover,
-  Spin,
-  Typography,
   Divider,
+  Input,
+  Popover,
   Space,
+  Spin,
+  Tooltip,
+  Typography,
 } from 'antd';
-import { RedoOutlined, CloseCircleFilled } from '@ant-design/icons';
 import cn from 'classnames';
+import { observer } from 'mobx-react-lite';
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { TopValue } from '@/mstore/filterStore';
-import { mobileScreen } from 'App/utils/isMobile';
 import { VList } from 'virtua';
-const { Text } = Typography;
+
+import { useStore } from 'App/mstore';
+import { searchService } from 'App/services';
+import { debounceCall } from 'App/utils';
+import { mobileScreen } from 'App/utils/isMobile';
+
 import OutsideClickDetectingDiv from 'Shared//OutsideClickDetectingDiv';
+
+const { Text } = Typography;
 
 interface FilterParams {
   id: string;
@@ -113,7 +116,7 @@ const ValueAutoComplete = observer(
     commaQuery = false,
     isDisabled = false,
     isLive = false,
-    scope
+    scope,
   }: Props) => {
     const predefinedValues = params.isPredefined
       ? (params.possibleValues ?? []).map((v) => ({
@@ -508,14 +511,14 @@ const ValueAutoComplete = observer(
                         mouseEnterDelay: 0.5,
                       },
                     }}
-                    style={{ maxWidth: '8rem' }}
+                    style={{ maxWidth: '10rem' }}
                   >
                     {mapValues
                       ? mapValues(initialValues[0])
                       : getDisplayLabel(initialValues[0])}
                   </Text>
-                  {initialValues.length > 1 && (
-                    <>
+                  {initialValues.slice(1, 3).map((val, i) => (
+                    <React.Fragment key={i + 1}>
                       <Text type="secondary" className="shrink-0">
                         {t('or')}
                       </Text>
@@ -523,24 +526,22 @@ const ValueAutoComplete = observer(
                         ellipsis={{
                           tooltip: {
                             title: mapValues
-                              ? mapValues(initialValues[1])
-                              : getDisplayLabel(initialValues[1]),
+                              ? mapValues(val)
+                              : getDisplayLabel(val),
                             placement: 'topLeft',
                             mouseEnterDelay: 0.5,
                           },
                         }}
-                        style={{ maxWidth: '8rem' }}
+                        style={{ maxWidth: '10rem' }}
                       >
-                        {mapValues
-                          ? mapValues(initialValues[1])
-                          : getDisplayLabel(initialValues[1])}
+                        {mapValues ? mapValues(val) : getDisplayLabel(val)}
                       </Text>
-                      {initialValues.length > 2 && (
-                        <Text type="secondary" className="shrink-0">
-                          {`+ ${initialValues.length - 2}`}
-                        </Text>
-                      )}
-                    </>
+                    </React.Fragment>
+                  ))}
+                  {initialValues.length > 3 && (
+                    <Text type="secondary" className="shrink-0">
+                      {`+ ${initialValues.length - 3}`}
+                    </Text>
                   )}
                 </>
               ) : (

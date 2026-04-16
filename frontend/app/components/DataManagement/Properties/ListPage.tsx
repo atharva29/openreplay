@@ -1,17 +1,22 @@
-import React from 'react';
-import { Input, Table, Button, Tooltip, Switch } from 'antd';
-import { useHistory, useLocation } from 'react-router-dom';
-import { useStore } from 'App/mstore';
-import { observer } from 'mobx-react-lite';
-import { Album, EyeOff } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import withPageTitle from '@/components/hocs/withPageTitle';
 import { useQuery } from '@tanstack/react-query';
+import withPermissions from 'HOCs/withPermissions';
+import { Button, Input, Switch, Table, Tooltip } from 'antd';
+import { Album, EyeOff } from 'lucide-react';
+import { observer } from 'mobx-react-lite';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useStore } from 'App/mstore';
+import { useHistory, useLocation } from 'App/routing';
+import { TextEllipsis } from 'UI';
+
 import FullPagination from 'Shared/FullPagination';
 import Tabs from 'Shared/Tabs';
-import { fetchList } from './api';
+
 import EventPropsPage from './EventPropsPage';
 import UserPropsPage from './UserProperty';
-import { TextEllipsis } from 'UI';
+import { fetchList } from './api';
 
 const showHiddenKey = 'data-management-properties-show-hidden';
 function getShowHidden(): boolean {
@@ -41,6 +46,12 @@ function ListPage() {
   const [view, setView] = React.useState<'users' | 'events'>(
     defaultView ?? 'users',
   );
+
+  const onSearch = (value: string) => {
+    setQuery(value);
+    setPage(1);
+  };
+
   const views = [
     {
       key: 'users',
@@ -162,12 +173,13 @@ function ListPage() {
     }
   }
 
+  const total = query ? list.length : data.total;
   return (
     <div
       className="flex flex-col rounded-lg border bg-white mx-auto"
       style={{ maxWidth: 1360 }}
     >
-      <div className={'flex items-center justify-between border-b px-4'}>
+      <div className={'flex flex-col gap-2 md:gap-0 md:flex-row md:items-center md:justify-between border-b px-4'}>
         <Tabs activeKey={view} onChange={(key) => setView(key)} items={views} />
         <div className="flex items-center gap-2">
           <Switch
@@ -188,13 +200,13 @@ function ListPage() {
               {t('Docs')}
             </Button>
           </a>
-          <div className="w-[320px]">
+          <div className="min-w-50 md:w-1/4 md:min-w-75">
             <Input.Search
               value={query}
               maxLength={256}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => onSearch(e.target.value)}
               size={'small'}
-              placeholder={t('Name or description')}
+              placeholder={t('Filter by name or description')}
             />
           </div>
         </div>
@@ -206,14 +218,14 @@ function ListPage() {
           isLoading={isPending}
           toUserProp={openProp}
           limit={limit}
-          total={data.total}
+          total={total}
           onPageChange={(page) => setPage(page)}
         />
       ) : (
         <EventPropsList
           list={list}
           limit={limit}
-          total={data.total}
+          total={total}
           page={page}
           isLoading={isPending}
           toEventProp={openProp}
@@ -294,6 +306,7 @@ function EventPropsList({
         columns={columns}
         dataSource={list}
         pagination={false}
+        scroll={{ x: 'max-content' }}
         onRow={(record) => ({
           onClick: () => toEventProp(record.name),
         })}
@@ -388,6 +401,7 @@ function UserPropsList({
           rowHoverable
           rowClassName={'cursor-pointer'}
           pagination={false}
+          scroll={{ x: 'max-content' }}
           dataSource={list}
           columns={columns}
           loading={isLoading}
@@ -405,4 +419,6 @@ function UserPropsList({
   );
 }
 
-export default observer(ListPage);
+export default withPageTitle('Properties')(
+  withPermissions(['DATA_MANAGEMENT'], '', false, false)(observer(ListPage)),
+);

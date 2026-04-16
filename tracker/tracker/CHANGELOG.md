@@ -1,3 +1,12 @@
+## 17.2.2
+
+- improve unauth detection for sdk
+
+## 17.2.0
+
+- remove fflate in favor of native compression streams
+- refactor canvas module to use custom frame format
+
 ## 17.1.6
 
 - canvas module refactoring to add batching, max concurrent requests limit, memory clearing on stop

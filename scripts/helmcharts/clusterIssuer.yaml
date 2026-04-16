@@ -17,3 +17,7 @@ spec:
     - http01:
         ingress:
           class: openreplay
+        ingressTemplate:
+          metadata:
+            annotations:
+              nginx.org/mergeable-ingress-type: "minion"

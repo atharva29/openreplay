@@ -1,19 +1,22 @@
-import React from 'react';
-import type { DistinctEvent } from './api';
 import { dataManagement, withSiteId } from '@/routes';
-import DataItemPage from '../DataItemPage';
+import React from 'react';
 import { toast } from 'react-toastify';
-import { updateEventProperty } from './api';
+
+import DataItemPage from '../DataItemPage';
 import DistinctEventPropsList from './DistinctEventPropsList';
+import type { DistinctEvent } from './api';
+import { updateEventProperty } from './api';
 
 function DistinctEventPage({
   event,
   siteId,
   openSessions,
+  refetchList,
 }: {
   event: DistinctEvent;
   siteId: string;
   openSessions: (eventName: string) => void;
+  refetchList: () => void;
 }) {
   const backLink = withSiteId(dataManagement.eventsList(), siteId);
 
@@ -22,6 +25,7 @@ function DistinctEventPage({
       const updatedEvent = { ...event };
       updatedEvent[property.key.toLocaleLowerCase()] = property.value;
       await updateEventProperty(updatedEvent);
+      refetchList();
       toast.success('Property updated successfully');
     } catch (error) {
       console.error(error);

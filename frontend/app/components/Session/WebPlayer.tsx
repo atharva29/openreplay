@@ -3,10 +3,11 @@ import { createWebPlayer } from 'Player';
 import { makeAutoObservable } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 
 import { useStore } from 'App/mstore';
+import { useParams } from 'App/routing';
+import { signalService } from 'App/services';
 import { Note } from 'App/services/NotesService';
 import { Loader, Modal } from 'UI';
 
@@ -18,7 +19,6 @@ import {
   PlayerContext,
   defaultContextValue,
 } from './playerContext';
-import { signalService } from 'App/services';
 
 const TABS = {
   EVENTS: 'Activity',
@@ -219,7 +219,15 @@ function WebPlayer(props: any) {
       console.debug('cleaning up player after', params.sessionId);
       toggleFullscreen(false);
       closeBottomBlock();
-      playerInst?.clean();
+
+      // Pause immediately (stops animation loop), but defer the heavy
+      // teardown (iframe removal, store resets) so it doesn't block
+      // React from mounting the next page.
+      playerInst?.pause();
+      const inst = playerInst;
+      if (inst) {
+        setTimeout(() => inst.clean(), 0);
+      }
       // @ts-ignore
       setContextValue(defaultContextValue);
     },

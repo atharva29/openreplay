@@ -2,7 +2,7 @@ import Filter from 'App/mstore/types/filter';
 import { FilterKey } from 'App/types/filter/filterType';
 import { observer } from 'mobx-react-lite';
 import React from 'react';
-import FilterItem from 'Shared/Filters/FilterItem';;
+import FilterItem from 'Shared/Filters/FilterItem';
 
 import { Button } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -58,7 +58,7 @@ function ExcludeFilters(props: Props) {
           ))}
         </div>
       ) : (
-        <Button type="link" onClick={addPageFilter} className="text-black!">
+        <Button type="link" onClick={addPageFilter} className="text-black! text-sm!">
           {t('Add Exclusion')}
         </Button>
       )}

@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
 import { Layout as AntLayout } from 'antd';
+import { observer } from 'mobx-react-lite';
+import React, { useEffect } from 'react';
+
 import SideMenu from 'App/layout/SideMenu';
 import TopHeader from 'App/layout/TopHeader';
 import { useStore } from 'App/mstore';
-import { observer } from 'mobx-react-lite';
 import { mobileScreen } from 'App/utils/isMobile';
 
 const { Sider, Content } = AntLayout;
@@ -21,7 +22,7 @@ function Layout(props: Props) {
   const { settingsStore, projectsStore } = useStore();
   const [collapsed, setCollapsed] = React.useState(false);
   const { siteId } = projectsStore;
-  const mobileDevice = mobileScreen
+  const mobileDevice = mobileScreen;
 
   useEffect(() => {
     const handleResize = () => {
@@ -42,7 +43,9 @@ function Layout(props: Props) {
 
   return (
     <AntLayout style={{ height: mobileDevice ? '100dvh' : undefined }}>
-      {!hideHeader && <TopHeader />}
+      <div className={hideHeader ? 'hidden' : 'block'}>
+        <TopHeader />
+      </div>
       <AntLayout>
         {!hideHeader && !window.location.pathname.includes('/onboarding/') ? (
           mobileDevice ? (

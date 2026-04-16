@@ -50,7 +50,7 @@ spec:
               valueFrom:
                 secretKeyRef: {{- include "openreplay.secrets" (dict "key" "clickhouse-password" "ctx" .) | nindent 18 }}
             - name: CLICKHOUSE_STRING
-              value: '{{ .Values.global.clickhouse.chHost }}:{{.Values.global.clickhouse.service.webPort}}/{{.Values.env.ch_db}}'
+              value: '{{ .Values.global.clickhouse.chHost }}:{{.Values.global.clickhouse.service.dataPort}}/{{.Values.env.ch_db}}'
             - name: LICENSE_KEY
               valueFrom:
                 secretKeyRef: {{- include "openreplay.secrets" (dict "key" "license-key" "ctx" .) | nindent 18 }}
@@ -65,6 +65,7 @@ spec:
               value: {{ include "openreplay.pg_connection_string" .}}
             {{- include "openreplay.env.redis_string" .Values.global.redis | nindent 12 }}
             {{- include "openreplay.env" (dict "ctx" .) | nindent 12}}
+            {{- include "openreplay.secretEnv" (dict "ctx" .) | nindent 12}}
           ports:
             {{- range $key, $val := .Values.service.ports }}
             - name: {{ $key }}

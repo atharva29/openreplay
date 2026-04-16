@@ -191,6 +191,9 @@ Create the volume mount config for redis TLS certificates
 {{- end -}}
 name: {{ $secretName }}
 key: {{ $secretKey }}
+{{- if eq .key "license-key" }}
+optional: true
+{{- end }}
 {{- end}}
 
 {{- /*
@@ -228,3 +231,16 @@ Usage: {{- if include "openreplay.isEnterprise" . }}
 true
 {{- end -}}
 {{- end -}}
+
+{{- define "openreplay.secretEnv" -}}
+{{- $ctx := .ctx -}}
+{{- $mergedEnv := merge ($ctx.Values.secretEnv | default dict) ($ctx.Values.global.secretEnv | default dict) -}}
+{{- $secretName := .ctx.Values.existingSecret | default (.ctx.Values.global.orAppSecrets.existingSecret | default "or-secrets") -}}
+{{- range $key, $val := $mergedEnv }}
+- name: {{ $key }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secretName }}
+      key: {{ $val }}
+{{- end}}
+{{- end}}

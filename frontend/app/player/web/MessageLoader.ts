@@ -43,7 +43,7 @@ export default class MessageLoader {
     this.session = session;
   }
 
-  rawMessages: any[] = []
+  rawMessages: any[] = [];
   createNewParser(
     shouldDecrypt = true,
     onMessagesDone: (msgs: PlayerMsg[], file?: string) => void,
@@ -70,7 +70,7 @@ export default class MessageLoader {
         while (!finished) {
           const msg = fileReader.readNext();
           if (msg) {
-            this.rawMessages.push(msg)
+            this.rawMessages.push(msg);
             msgs.push(msg);
           } else {
             finished = true;
@@ -114,10 +114,7 @@ export default class MessageLoader {
           }
         });
 
-        const sortedMsgs = msgs
-          // .sort((m1, m2) => m1.time - m2.time)
-          .sort(brokenDomSorter)
-          .sort(sortIframes);
+        const sortedMsgs = msgs.sort(brokenDomSorter).sort(sortIframes);
 
         if (brokenMessages > 0) {
           console.warn(
@@ -154,7 +151,7 @@ export default class MessageLoader {
   processMessages = (msgs: PlayerMsg[], file?: string) => {
     msgs.forEach(async (msg) => {
       if (msg.tabId && file?.includes('dom')) {
-        this.allMessages.push(msg)
+        this.allMessages.push(msg);
       }
       if (msg.tp === MType.CanvasNode) {
         /**
@@ -256,7 +253,9 @@ export default class MessageLoader {
     } finally {
       this.createTabCloseEvents();
       if ('messageTabSourceManager' in this.messageManager) {
-        this.messageManager.messageTabSourceManager.processMessages(this.allMessages)
+        this.messageManager.messageTabSourceManager.processMessages(
+          this.allMessages,
+        );
       }
       this.store.update({ domLoading: false, devtoolsLoading: false });
     }
@@ -392,54 +391,3 @@ function sortIframes(m1, m2) {
   }
   return 0;
 }
-
-/**
- * Search for orphan nodes in session
- */
-function findBrokenNodes(nodes: any[]) {
-  const idToNode = {};
-  const orphans: any[] = [];
-  const result = {};
-
-  // Map all nodes by id for quick access and identify potential orphans
-  nodes.forEach((node) => {
-    // @ts-ignore
-    idToNode[node.id] = { ...node, children: [] };
-  });
-
-  // Identify true orphans (nodes whose parentID does not exist)
-  nodes.forEach((node) => {
-    if (node.parentID) {
-      // @ts-ignore
-      const parentNode = idToNode[node.parentID];
-      if (parentNode) {
-        // @ts-ignore
-        parentNode.children.push(idToNode[node.id]);
-      } else {
-        orphans.push(node.id); // parentID does not exist
-      }
-    }
-  });
-
-  // Recursively collect all descendants of a node
-  function collectDescendants(nodeId) {
-    // @ts-ignore
-    const node = idToNode[nodeId];
-    node.children.forEach((child) => {
-      collectDescendants(child.id);
-    });
-    return node;
-  }
-
-  // Build trees for each orphan
-  orphans.forEach((orId: number) => {
-    // @ts-ignore
-    result[orId] = collectDescendants(orId);
-  });
-
-  return result;
-}
-
-// @ts-ignore
-window.searchOrphans = (msgs) =>
-  findBrokenNodes(msgs.filter((m) => [8, 9, 10, 70].includes(m.tp)));

@@ -1,17 +1,20 @@
-import React from 'react';
-import { Input, Button, Dropdown, MenuProps } from 'antd';
+import withPageTitle from '@/components/hocs/withPageTitle';
 import { DownOutlined } from '@ant-design/icons';
-import { useHistory, useLocation } from 'react-router-dom';
-import { useStore } from 'App/mstore';
-import { observer } from 'mobx-react-lite';
-import { Album } from 'lucide-react';
-import withPermissions from 'HOCs/withPermissions';
-import EventsList from './EventsList';
-import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { fetchList } from './api';
-import DistinctEventPage from './DistinctEvent';
+import withPermissions from 'HOCs/withPermissions';
+import { Button, Dropdown, Input, MenuProps } from 'antd';
+import { Album } from 'lucide-react';
+import { observer } from 'mobx-react-lite';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useStore } from 'App/mstore';
 import { sessions, withSiteId } from 'App/routes';
+import { useHistory, useLocation } from 'App/routing';
+
+import DistinctEventPage from './DistinctEvent';
+import EventsList from './EventsList';
+import { fetchList } from './api';
 
 type EventFilter = 'all' | 'autocaptured' | 'my_events';
 
@@ -43,12 +46,20 @@ function EventsListPage() {
 
   const limit = 10;
   const [page, setPage] = React.useState(1);
-  const { data = { events: [], total: 0 }, isPending } = useQuery({
+  const {
+    data = { events: [], total: 0 },
+    isPending,
+    refetch,
+  } = useQuery({
     queryKey: ['distinct-events-list', siteId],
     queryFn: () => fetchList(),
   });
   const onPageChange = (page: number) => {
     setPage(page);
+  };
+  const onSearch = (value: string) => {
+    setQuery(value);
+    setPage(1);
   };
   const list = React.useMemo(() => {
     if (shownEvent) return [];
@@ -86,6 +97,7 @@ function EventsListPage() {
           event={event}
           siteId={siteId!}
           openSessions={openSessions}
+          refetchList={refetch}
         />
       );
     } else {
@@ -115,7 +127,7 @@ function EventsListPage() {
       className="flex flex-col rounded-lg border bg-white mx-auto"
       style={{ maxWidth: 1360 }}
     >
-      <div className={'flex items-center justify-between border-b px-4 py-2'}>
+      <div className={'flex flex-col gap-2 md:gap-0 md:flex-row md:items-center md:justify-between border-b px-4 py-2'}>
         <div className="flex items-center gap-2">
           <div className={'font-semibold text-lg capitalize'}>
             {t('Events')}
@@ -140,14 +152,14 @@ function EventsListPage() {
               {t('Docs')}
             </Button>
           </a>
-          <div className="w-[320px]">
+          <div className="min-w-50 md:w-1/4 md:min-w-75">
             <Input.Search
               size={'small'}
-              placeholder={t('Event name, display name, or description')}
+              placeholder={t('Filter by name or description')}
               value={query}
               allowClear
               maxLength={256}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => onSearch(e.target.value)}
             />
           </div>
         </div>
@@ -157,7 +169,7 @@ function EventsListPage() {
         list={list}
         page={page}
         limit={limit}
-        total={data.total}
+        total={query ? list.length : data.total}
         listLen={list.length}
         isPending={isPending}
         onPageChange={onPageChange}
@@ -166,9 +178,11 @@ function EventsListPage() {
   );
 }
 
-export default withPermissions(
-  ['DATA_MANAGEMENT'],
-  '',
-  false,
-  false,
-)(observer(EventsListPage));
+export default withPageTitle('Events')(
+  withPermissions(
+    ['DATA_MANAGEMENT'],
+    '',
+    false,
+    false,
+  )(observer(EventsListPage)),
+);

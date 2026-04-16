@@ -236,23 +236,27 @@ export default class TabSessionManager {
           const fileId = managerId;
           const delta = msg.timestamp - this.sessionStart;
 
-          const canvasNodeLinks = this.session.canvasURL.filter((url: string) =>
-            url.includes(fileId),
-          ) as string[];
+          const canvasNodeLinks = [
+            ...this.session.canvasURL,
+            ...this.session.canvasFrames,
+          ].filter((url: string) => url.includes(fileId)) as string[];
+          const framesFile = canvasNodeLinks.find((url: string) =>
+            url.includes('.frames'),
+          );
           const tarball = canvasNodeLinks.find((url: string) =>
             url.includes('.tar.'),
           );
           const mp4file = canvasNodeLinks.find((url: string) =>
             url.includes('.mp4'),
           );
-          if (!tarball && !mp4file) {
+          if (!framesFile && !tarball && !mp4file) {
             console.error('no canvas recording provided');
             break;
           }
           const manager = new CanvasManager(
             msg.nodeId,
             delta,
-            [tarball, mp4file],
+            [tarball, mp4file, framesFile],
             this.getNode as (id: number) => VElement | undefined,
             this.sessionStart,
           );
@@ -446,12 +450,16 @@ export default class TabSessionManager {
     const lastLocationMsg = this.locationManager.moveGetLast(t, index, true);
     if (lastLocationMsg) {
       const { tabNames, location } = this.state.get();
+      const newTabNames = { ...tabNames };
       if (location !== lastLocationMsg.url) {
         if (lastLocationMsg.documentTitle) {
-          tabNames[this.id] = lastLocationMsg.documentTitle;
+          newTabNames[this.id] = lastLocationMsg.documentTitle;
         }
         // @ts-ignore comes from parent state
-        this.state.update({ location: lastLocationMsg.url, tabNames });
+        this.state.update({
+          location: lastLocationMsg.url,
+          tabNames: newTabNames,
+        });
       }
     }
 

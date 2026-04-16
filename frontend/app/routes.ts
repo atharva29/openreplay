@@ -69,7 +69,7 @@ export const signup = (): string => '/signup';
 export const forgotPassword = (): string => '/reset-password';
 
 export const CLIENT_DEFAULT_TAB = CLIENT_TABS.PROFILE;
-const routerClientTabString = `:activeTab(${Object.values(CLIENT_TABS).join('|')})`;
+const routerClientTabString = ':activeTab';
 export const client = (tab = routerClientTabString): string => `/client/${tab}`;
 
 export const OB_TABS = {
@@ -79,7 +79,7 @@ export const OB_TABS = {
   INTEGRATIONS: 'integrations',
 };
 export const OB_DEFAULT_TAB = OB_TABS.INSTALLING;
-const routerOBTabString = `:activeTab(${Object.values(OB_TABS).join('|')})`;
+const routerOBTabString = ':activeTab';
 
 export const onboarding = (tab = routerOBTabString): string =>
   `/onboarding/${tab}`;
@@ -168,6 +168,9 @@ export const dataManagement = {
   usersList: () => `/data-management/list/users`,
   eventsList: () => `/data-management/list/events`,
   properties: () => '/data-management/list/properties',
+  actions: () => '/data-management/list/actions',
+  actionPage: (id = ':actionId', hash?: string | number) =>
+    hashed(`/data-management/list/actions/${id}`, hash),
 };
 
 const REQUIRED_SITE_ID_ROUTES = [
@@ -211,16 +214,26 @@ const REQUIRED_SITE_ID_ROUTES = [
   dataManagement.eventPage(''),
   dataManagement.eventsList(),
   dataManagement.properties(),
+  dataManagement.actions(),
+  dataManagement.actionPage(''),
 ];
 const routeNeedsSiteId = (path: string): boolean =>
   REQUIRED_SITE_ID_ROUTES.some((r) => path.startsWith(r));
-const siteIdToUrl = (siteId = ':siteId'): string => {
+const siteIdToUrl = (
+  siteId: string | string[] | null | undefined = ':siteId',
+): string => {
   if (Array.isArray(siteId)) {
-    return `:siteId(${siteId.join('|')})`;
+    return ':siteId';
+  }
+  if (siteId == null) {
+    return ':siteId';
   }
   return siteId;
 };
-export const withSiteId = (route: string, siteId = ':siteId'): string =>
+export const withSiteId = (
+  route: string,
+  siteId: string | string[] | null | undefined = ':siteId',
+): string =>
   routeNeedsSiteId(route) ? `/${siteIdToUrl(siteId)}${route}` : route;
 export const hasSiteId = (path: string): boolean => {
   const pathParts = path.split('/');

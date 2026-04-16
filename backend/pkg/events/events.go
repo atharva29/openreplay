@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"strconv"
 	"time"
 	"unicode"
 
@@ -59,12 +60,63 @@ func getString(event *event, name string) *string {
 	return &val
 }
 
+func toInt64(v any) (int64, bool) {
+	switch val := v.(type) {
+	case int:
+		return int64(val), true
+	case int8:
+		return int64(val), true
+	case int16:
+		return int64(val), true
+	case int32:
+		return int64(val), true
+	case int64:
+		return val, true
+	case uint:
+		return int64(val), true
+	case uint8:
+		return int64(val), true
+	case uint16:
+		return int64(val), true
+	case uint32:
+		return int64(val), true
+	case uint64:
+		return int64(val), true
+	case float32:
+		return int64(val), true
+	case float64:
+		return int64(val), true
+	case json.Number:
+		if i, err := val.Int64(); err == nil {
+			return i, true
+		}
+		if f, err := val.Float64(); err == nil {
+			return int64(f), true
+		}
+	case string:
+		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return i, true
+		}
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return int64(f), true
+		}
+	}
+	return 0, false
+}
+
 func getInt64(event *event, name string) *int64 {
-	if event == nil || event.Properties == nil || event.Properties[name] == nil {
+	if event == nil || event.Properties == nil {
 		return nil
 	}
-	val := event.Properties[name].(int64)
-	return &val
+	raw, ok := event.Properties[name]
+	if !ok || raw == nil {
+		return nil
+	}
+	result, ok := toInt64(raw)
+	if !ok {
+		return nil
+	}
+	return &result
 }
 
 func getDiffInt64(event *event, start, end string) *int64 {
@@ -226,7 +278,7 @@ func (e *eventsImpl) groupClicksToClickRage(projID uint32, sessID uint64, sessEv
 	res := make([]interface{}, 0, len(sessEvents))
 	for _, sessEvent := range sessEvents {
 		switch sessEvent.Type {
-		case "CLICK":
+		case "CLICK", "TAP":
 			if toSkip > 0 {
 				toSkip--
 				continue
@@ -482,7 +534,7 @@ func (e *eventsImpl) GetIncidentsBySessionID(projectID uint32, sessID uint64) []
 					"$properties".start_time AS start_time
 			FROM product_analytics.events
 			WHERE session_id = ? AND project_id = ?
-			  	AND issue_type = 'incident' 
+			  	AND issue_type = 'incident'
 			  	AND "$event_name" = 'ISSUE'
 				AND "$auto_captured"
 			ORDER BY created_at;`
@@ -501,18 +553,18 @@ func (e *eventsImpl) GetIncidentsBySessionID(projectID uint32, sessID uint64) []
 
 func (e *eventsImpl) GetMobileBySessionID(projID uint32, sessID uint64) []interface{} {
 	query := `SELECT created_at,
-              	toString(` + "`$properties`" + `) AS p_properties,
-              	` + "`$event_name`" + ` AS type,
-              	` + "`$duration_s`" + ` AS duration,
-              	` + "`$current_url`" + ` AS url,
-              	` + "`$referrer`" + ` AS referrer
+					"$properties" AS props,
+					"$event_name" AS type,
+					"$duration_s" AS duration,
+					"$current_url" AS url,
+					"$referrer" AS referrer
               FROM product_analytics.events
-              WHERE session_id = ?
-              	AND ` + "`$event_name`" + ` IN ('CLICK', 'INPUT', 'LOCATION', 'TAP')
-				AND ` + "`$auto_captured`" + `
+              WHERE project_id = ? AND session_id = ?
+              	AND "$event_name" IN ('INPUT', 'LOCATION', 'TAP')
+				AND "$auto_captured"
 			  ORDER BY created_at;`
 	sessEvents := make([]event, 0)
-	if err := e.chConn.Select(context.Background(), &sessEvents, query, sessID); err != nil {
+	if err := e.chConn.Select(context.Background(), &sessEvents, query, projID, sessID); err != nil {
 		e.log.Error(context.Background(), "Error querying mobile events: %v", err)
 		return nil
 	}

@@ -39,6 +39,14 @@ podAnnotations: {}
 
 podSecurityContext: {}
   # fsGroup: 2000
+  # Enable delay accounting for IOWait metrics (requires kubelet --allowed-unsafe-sysctls=kernel.task_delayacct):
+  # sysctls:
+  # - name: kernel.task_delayacct
+  #   value: "1"
+  # Recommended node-level ulimits (set via DaemonSet or cloud-init, not settable per-pod in k8s):
+  #   nofile:  262144
+  #   nproc:   65535
+  #   memlock: unlimited
 
 securityContext: {}
   # capabilities:
@@ -70,10 +78,9 @@ backupEnv:
 # S3_DISABLE_SSL="true"
 # S3_DEBUG="true"
 
-
 service:
-  webPort: 9000
-  dataPort: 8123
+  webPort: 8123
+  dataPort: 9000
 
 resources:
   requests: {}
@@ -87,6 +94,16 @@ tolerations: []
 
 affinity: {}
 storageSize: 100Gi
+
+# Kernel / OS tuning (optional, disabled by default)
+# These require privileged initContainers and may need cluster-level configuration.
+kernelTuning:
+  # Transparent HugePages — ClickHouse recommends 'madvise' over 'always'.
+  # Deploys a privileged initContainer to set THP mode on the node.
+  # WARNING: this is a node-wide setting — affects ALL pods on the same node.
+  thp:
+    enabled: false
+    mode: madvise
 
 configOverride:
   serverConfig:
@@ -104,16 +121,21 @@ configOverride:
         <listen_host>0.0.0.0</listen_host>
         <keep_alive_timeout>100</keep_alive_timeout>
       </clickhouse>
-    # another-config.xml: |-
+    # 01-server-tuning.xml: |-
     #   <clickhouse>
-        # <concurrent_threads_soft_limit_num>64</concurrent_threads_soft_limit_num>
-        # <concurrent_threads_soft_limit_ratio_to_cores>2</concurrent_threads_soft_limit_ratio_to_cores>
-        # <concurrent_threads_scheduler>fair_round_robin</concurrent_threads_scheduler>
-        # <max_server_memory_usage>102400000000</max_server_memory_usage>
-        # <max_thread_pool_size>10000</max_thread_pool_size>
-        # <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
-        # <uncompressed_cache_size remove="remove"></uncompressed_cache_size>
-        # <mmap_cache_size>26214</mmap_cache_size>
+    #     <!-- Requires resources.limits.memory on the pod; ratio is applied to detected RAM. -->
+    #     <merges_mutations_memory_usage_to_ram_ratio>0.7</merges_mutations_memory_usage_to_ram_ratio>
+    #     <!-- max_server_memory_usage: 0 = auto (~90% of RAM). Uncomment to cap explicitly. -->
+    #     <!-- <max_server_memory_usage>0</max_server_memory_usage> -->
+    #     <!--
+    #     <concurrent_threads_soft_limit_num>64</concurrent_threads_soft_limit_num>
+    #     <concurrent_threads_soft_limit_ratio_to_cores>2</concurrent_threads_soft_limit_ratio_to_cores>
+    #     <concurrent_threads_scheduler>fair_round_robin</concurrent_threads_scheduler>
+    #     <max_thread_pool_size>10000</max_thread_pool_size>
+    #     <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+    #     <uncompressed_cache_size remove="remove"></uncompressed_cache_size>
+    #     <mmap_cache_size>26214</mmap_cache_size>
+    #     -->
     #   </clickhouse>
   userConfig:
     00-user-override.xml: |-

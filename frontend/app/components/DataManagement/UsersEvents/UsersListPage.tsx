@@ -1,6 +1,6 @@
 import React from 'react';
 import { Input, Button } from 'antd';
-import { useHistory } from 'react-router-dom';
+import { useHistory } from 'App/routing';
 import { useStore } from 'App/mstore';
 import { observer } from 'mobx-react-lite';
 import { withSiteId, dataManagement } from 'App/routes';
@@ -45,10 +45,10 @@ function UsersListPage() {
               {t('Docs')}
             </Button>
           </a>
-          <div className="w-[320px]">
+          <div className="min-w-50 md:w-1/4 md:min-w-75">
             <Input.Search
               size={'small'}
-              placeholder={'Name, email, ID'}
+              placeholder={t('Filter by name, email or ID')}
               value={query}
               allowClear
               maxLength={256}

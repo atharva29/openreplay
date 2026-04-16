@@ -1,41 +1,46 @@
-import React from 'react';
-import UnifiedFilterList from 'Shared/Filters/FilterList/UnifiedFilterList';
-import FilterListHeader from 'Shared/Filters/FilterList/FilterListHeader';
-import FilterSelection from 'Shared/Filters/FilterSelection';
-import { Dropdown, Button, Divider, Tooltip, TableProps } from 'antd';
-import { MoreOutlined } from '@ant-design/icons';
-import ColumnsModal from 'Components/DataManagement/Activity/ColumnsModal';
-import { useModal } from 'App/components/Modal';
-import { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
-import EventDetailsModal from './EventDetailsModal';
-import { Link } from 'react-router-dom';
-import { dataManagement, withSiteId } from 'App/routes';
-import { observer } from 'mobx-react-lite';
-import { useStore } from 'App/mstore';
-import FullPagination from 'Shared/FullPagination';
-import AnimatedSVG from 'Shared/AnimatedSVG';
-import DndTable from 'Shared/DNDTable';
-import { Plus } from 'lucide-react';
-import { Filter } from '@/mstore/types/filterConstants';
-import SelectDateRange from 'Shared/SelectDateRange/SelectDateRange';
-import { formatTimeOrDate } from 'App/date';
-import Event, { getSortingKey } from '@/mstore/types/Analytics/Event';
-import withPermissions from 'HOCs/withPermissions';
-import { getEventIcon } from './getEventIcon';
-import NewEventsBadge from './NewEventsBadge';
-import { Icon } from 'UI';
-import { useHistory } from 'react-router';
 import withPageTitle from '@/components/hocs/withPageTitle';
+import Event, { getSortingKey } from '@/mstore/types/Analytics/Event';
+import { Filter } from '@/mstore/types/filterConstants';
+import { MoreOutlined } from '@ant-design/icons';
+import withPermissions from 'HOCs/withPermissions';
+import { Button, Divider, Dropdown, TableProps, Tooltip } from 'antd';
+import { Plus } from 'lucide-react';
+import { observer } from 'mobx-react-lite';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { useModal } from 'App/components/Modal';
+import { formatTimeOrDate } from 'App/date';
+import { useStore } from 'App/mstore';
+import { dataManagement, withSiteId } from 'App/routes';
+import { Link, useHistory } from 'App/routing';
+import ColumnsModal from 'Components/DataManagement/Activity/ColumnsModal';
+import { Icon } from 'UI';
+
+import AnimatedSVG from 'Shared/AnimatedSVG';
+import { ICONS } from 'Shared/AnimatedSVG/AnimatedSVG';
+import DndTable from 'Shared/DNDTable';
+import FilterListHeader from 'Shared/Filters/FilterList/FilterListHeader';
+import UnifiedFilterList from 'Shared/Filters/FilterList/UnifiedFilterList';
+import FilterSelection from 'Shared/Filters/FilterSelection';
+import FullPagination from 'Shared/FullPagination';
+import SelectDateRange from 'Shared/SelectDateRange/SelectDateRange';
+
+import EventDetailsModal from './EventDetailsModal';
+import NewEventsBadge from './NewEventsBadge';
+import { getEventIcon } from './getEventIcon';
 
 const columnOrderKey = '$__activity_columns_order__$';
 
 function ActivityPage() {
+  const { t } = useTranslation();
   const history = useHistory();
   const searchParams = new URLSearchParams(window.location.search);
   const eventId = searchParams.get('event_id');
   const { projectsStore, filterStore, analyticsStore, settingsStore } =
     useStore();
   const { timezone } = settingsStore.sessionSettings;
+  const prevSiteId = React.useRef(projectsStore.activeSiteId);
 
   const siteId = projectsStore.activeSiteId;
   const allFilterOptions = filterStore.getScopedCurrentProjectFilters([
@@ -53,7 +58,7 @@ function ActivityPage() {
 
   const columns: TableProps<Event>['columns'] = [
     {
-      title: 'Event Name',
+      title: t('Event Name'),
       dataIndex: 'event_name',
       key: 'event_name',
       sorter: true,
@@ -69,7 +74,7 @@ function ActivityPage() {
       ),
     },
     {
-      title: 'Time',
+      title: t('Time'),
       dataIndex: 'created_at',
       key: 'created_at',
       sorter: true,
@@ -78,7 +83,7 @@ function ActivityPage() {
       render: (text) => formatTimeOrDate(text, timezone),
     },
     {
-      title: 'Distinct ID',
+      title: t('Distinct ID'),
       dataIndex: 'distinct_id',
       key: 'distinct_id',
       sorter: true,
@@ -108,7 +113,7 @@ function ActivityPage() {
       },
     },
     {
-      title: 'City',
+      title: t('City'),
       dataIndex: 'city',
       key: 'city',
       sorter: true,
@@ -116,7 +121,7 @@ function ActivityPage() {
       className: 'cursor-pointer!',
     },
     {
-      title: 'Environment',
+      title: t('Environment'),
       dataIndex: 'environment',
       key: 'environment',
       sorter: true,
@@ -127,7 +132,7 @@ function ActivityPage() {
       title: (
         <Dropdown
           menu={{ items: dropdownItems }}
-          trigger={'click'}
+          trigger={['click']}
           placement={'bottomRight'}
         >
           <div className={'cursor-pointer'}>
@@ -152,6 +157,7 @@ function ActivityPage() {
   const appliedFilter = analyticsStore.payloadFilters;
   const appliedEvents = appliedFilter.filters.filter((f) => f.isEvent);
   const activeFilters = appliedFilter.filters.map((f) => f.name);
+
   const eventFiltersWithIndices = appliedFilter.filters
     .map((filter, originalIndex) => ({ filter, originalIndex }))
     .filter(({ filter }) => filter.isEvent);
@@ -222,14 +228,19 @@ function ActivityPage() {
   React.useEffect(() => {
     analyticsStore.fetchEvents();
   }, [analyticsStore.payloadFilters, analyticsStore.payloadFilters.filters]);
+
   React.useEffect(() => {
-    analyticsStore.reset();
+    if (prevSiteId.current !== projectsStore.activeSiteId) {
+      prevSiteId.current = projectsStore.activeSiteId;
+      console.log('resetting filters');
+      analyticsStore.reset();
+    }
   }, [projectsStore.activeSiteId]);
 
   React.useEffect(() => {
     const onModalClose = () => {
       hideModal();
-      history.replace({ search: undefined });
+      history.replace({ search: '' });
     };
     if (eventId) {
       showModal(
@@ -242,7 +253,7 @@ function ActivityPage() {
           width: 620,
           right: true,
         },
-        () => history.replace({ search: undefined }),
+        () => history.replace({ search: '' }),
       );
     } else {
       hideModal();
@@ -308,13 +319,12 @@ function ActivityPage() {
           onClick={analyticsStore.reset}
           disabled={!analyticsStore.payloadFilters.filters.length}
         >
-          Clear
+          {t('Clear')}
         </Button>
-        <Button onClick={testPushItems} type="default" size="small">debug</Button>
       </div>
       <div className={'shadow-sm rounded-lg bg-white p-4 border'}>
         <FilterListHeader
-          title="Events"
+          title={t('Events')}
           orderProps={appliedFilter}
           filterSelection={
             <FilterSelection
@@ -333,7 +343,7 @@ function ActivityPage() {
         />
 
         <UnifiedFilterList
-          title="Events"
+          title={t('Events')}
           filters={appliedEvents}
           isDraggable={true}
           showIndices={true}
@@ -347,7 +357,7 @@ function ActivityPage() {
         <Divider className="my-3!" />
 
         <FilterListHeader
-          title="Filters"
+          title={t('Filters')}
           filterSelection={
             <FilterSelection
               filters={propertyOptions}
@@ -365,7 +375,7 @@ function ActivityPage() {
         />
 
         <UnifiedFilterList
-          title="Filters"
+          title={t('Filters')}
           filters={appliedFilter.filters.filter((f) => !f.isEvent)}
           className="mt-2"
           isDraggable={false}
@@ -419,7 +429,7 @@ function ActivityPage() {
                 onClick={analyticsStore.fetchEvents}
                 icon={<Icon name={'arrow-repeat'} size={20} />}
               >
-                Refresh
+                {t('Refresh')}
               </Button>
             </div>
           ) : (
@@ -433,6 +443,7 @@ function ActivityPage() {
                 rowClassName={'cursor-pointer'}
                 dataSource={list}
                 pagination={false}
+                scroll={{ x: 'max-content' }}
                 columns={cols}
                 onOrderChange={onOrderChange}
                 onChange={(a1, a2, sorter) => {

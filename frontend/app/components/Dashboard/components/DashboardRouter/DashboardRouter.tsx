@@ -1,109 +1,63 @@
 import React from 'react';
-import { Switch, Route } from 'react-router';
-import { withRouter, RouteComponentProps } from 'react-router-dom';
 
-import {
-  metrics,
-  metricDetails,
-  metricDetailsSub,
-  dashboardSelected,
-  dashboardMetricCreate,
-  dashboardMetricDetails,
-  withSiteId,
-  dashboard,
-  alerts,
-  alertCreate,
-  alertEdit,
-} from 'App/routes';
-import DashboardView from '../DashboardView';
-import MetricsView from '../MetricsView';
-import WidgetView from '../WidgetView';
-import WidgetSubDetailsView from '../WidgetSubDetailsView';
-import DashboardsView from '../DashboardList';
+import { useHistory, useLocation, useParams } from 'App/routing';
+
 import Alerts from '../Alerts';
 import CreateAlert from '../Alerts/NewAlert';
+import DashboardsView from '../DashboardList';
+import DashboardView from '../DashboardView';
+import MetricsView from '../MetricsView';
+import WidgetSubDetailsView from '../WidgetSubDetailsView';
+import WidgetView from '../WidgetView';
 
-function DashboardViewSelected({
-  siteId,
-  dashboardId,
-}: {
-  siteId: string;
-  dashboardId: string;
-}) {
-  return <DashboardView siteId={siteId} dashboardId={dashboardId} />;
-}
+type RouterParams = {
+  siteId?: string;
+  dashboardId?: string;
+  metricId?: string;
+  subId?: string;
+  alertId?: string;
+};
 
-interface Props extends RouteComponentProps {
-  match: any;
-}
+function DashboardRouter() {
+  const history = useHistory();
+  const location = useLocation();
+  const params = useParams<RouterParams>();
 
-function DashboardRouter(props: Props) {
-  const {
-    match: {
-      params: { siteId, dashboardId },
-    },
+  const { siteId, dashboardId, metricId, subId } = params;
+
+  const section = location.pathname.split('/')[2];
+
+  const routeProps = {
     history,
-  } = props;
+    location,
+    match: { params },
+  };
 
-  return (
-    <div>
-      <Switch>
-        <Route exact strict path={withSiteId(metrics(), siteId)}>
-          <MetricsView siteId={siteId} />
-        </Route>
+  if (!siteId) return null;
 
-        <Route exact strict path={withSiteId(metricDetails(), siteId)}>
-          <WidgetView siteId={siteId} {...props} />
-        </Route>
+  if (section === 'metrics') {
+    if (subId) return <WidgetSubDetailsView siteId={siteId} {...routeProps} />;
+    if (metricId) return <WidgetView siteId={siteId} {...routeProps} />;
+    return <MetricsView siteId={siteId} />;
+  }
 
-        <Route exact strict path={withSiteId(metricDetailsSub(), siteId)}>
-          <WidgetSubDetailsView siteId={siteId} {...props} />
-        </Route>
+  if (section === 'dashboard') {
+    if (metricId) return <WidgetView siteId={siteId} {...routeProps} />;
+    if (dashboardId)
+      return <DashboardView siteId={siteId} dashboardId={dashboardId} />;
+    return <DashboardsView siteId={siteId} history={history} />;
+  }
 
-        <Route exact path={withSiteId(dashboard(), siteId)}>
-          <DashboardsView siteId={siteId} history={history} />
-        </Route>
+  if (section === 'alerts') {
+    return <Alerts siteId={siteId} />;
+  }
 
-        <Route
-          exact
-          strict
-          path={withSiteId(dashboardMetricDetails(dashboardId), siteId)}
-        >
-          <WidgetView siteId={siteId} {...props} />
-        </Route>
+  if (section === 'alert') {
+    // @ts-ignore
+    return <CreateAlert siteId={siteId} {...routeProps} />;
+  }
 
-        <Route
-          exact
-          strict
-          path={withSiteId(dashboardMetricCreate(dashboardId), siteId)}
-        >
-          <WidgetView siteId={siteId} {...props} />
-        </Route>
-
-        <Route
-          exact
-          strict
-          path={withSiteId(dashboardSelected(dashboardId), siteId)}
-        >
-          <DashboardViewSelected siteId={siteId} dashboardId={dashboardId} />
-        </Route>
-
-        <Route exact strict path={withSiteId(alerts(), siteId)}>
-          <Alerts siteId={siteId} />
-        </Route>
-
-        <Route exact path={withSiteId(alertCreate(), siteId)}>
-          {/* @ts-ignore */}
-          <CreateAlert siteId={siteId as string} />
-        </Route>
-
-        <Route exact path={withSiteId(alertEdit(), siteId)}>
-          {/* @ts-ignore */}
-          <CreateAlert siteId={siteId} {...props} />
-        </Route>
-      </Switch>
-    </div>
-  );
+  return null;
 }
 
-export default withRouter(DashboardRouter);
+export default DashboardRouter;

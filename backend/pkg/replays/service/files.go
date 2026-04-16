@@ -19,8 +19,8 @@ type Files interface {
 	GetMobsUrls(sessID uint64) ([]string, error)
 	GetDevtoolsUrls(sessID uint64) ([]string, error)
 	GetMobStartUrl(sessID uint64) ([]string, error)
-	GetCanvasUrls(sessID uint64) ([]string, error)
-	GetMobileReplayUrls(sessID uint64) ([]string, error)
+	GetCanvasUrls(sessID uint64) ([]string, []string, error)
+	GetMobileReplayUrls(sessID uint64) ([]string, []string, error)
 	GetUnprocessedMob(sessID uint64) (string, error)
 	GetUnprocessedDevtools(sessID uint64) (string, error)
 }
@@ -111,29 +111,40 @@ func (f *filesImpl) GetMobStartUrl(sessID uint64) ([]string, error) {
 	return []string{doms}, nil
 }
 
-func (f *filesImpl) GetCanvasUrls(sessID uint64) ([]string, error) {
+func (f *filesImpl) GetCanvasUrls(sessID uint64) ([]string, []string, error) {
 	recIDs, err := f.canvases.Get(sessID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	res := make([]string, 0, len(recIDs))
+	tars := make([]string, 0, len(recIDs))
+	frames := make([]string, 0, len(recIDs))
+	for _, recID := range recIDs {
+		url, err := f.objStore.GetPreSignedDownloadUrlFromBucket(f.cfg.BucketName, fmt.Sprintf("%d/%s.webp.frames.zst", sessID, recID))
+		if err != nil {
+			return nil, nil, err
+		}
+		frames = append(frames, url)
+	}
 	for _, recID := range recIDs {
 		url, err := f.objStore.GetPreSignedDownloadUrlFromBucket(f.cfg.BucketName, fmt.Sprintf("%d/%s.tar.zst", sessID, recID))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		res = append(res, url)
+		tars = append(tars, url)
 	}
-	return res, nil
+	return frames, tars, nil
 }
 
-func (f *filesImpl) GetMobileReplayUrls(sessID uint64) ([]string, error) {
-	key := fmt.Sprintf("%d/replay.tar.zst", sessID)
-	video, err := f.objStore.GetPreSignedDownloadUrlFromBucket(f.cfg.BucketName, key)
+func (f *filesImpl) GetMobileReplayUrls(sessID uint64) ([]string, []string, error) {
+	oldReplay, err := f.objStore.GetPreSignedDownloadUrlFromBucket(f.cfg.BucketName, fmt.Sprintf("%d/replay.tar.zst", sessID))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return []string{video}, nil
+	newReplay, err := f.objStore.GetPreSignedDownloadUrlFromBucket(f.cfg.BucketName, fmt.Sprintf("%d/replay.frames.zst", sessID))
+	if err != nil {
+		return nil, nil, err
+	}
+	return []string{newReplay}, []string{oldReplay}, nil
 }
 
 func (f *filesImpl) GetUnprocessedMob(sessID uint64) (string, error) {

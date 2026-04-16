@@ -1,14 +1,15 @@
-import React from 'react';
-import { Alert, Space, Button } from 'antd';
+import { trackerInstance } from '@/init/openreplay';
+import { Alert, Button, Space } from 'antd';
+import { SquareArrowOutUpRight } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { useStore } from 'App/mstore';
 import { onboarding as onboardingRoute } from 'App/routes';
-import { withRouter } from 'react-router-dom';
-import { SquareArrowOutUpRight } from 'lucide-react';
-import { useHistory } from 'react-router';
+import { useNavigate } from 'App/routing';
+
 import * as routes from '../../../routes';
-import { useTranslation } from 'react-i18next';
-import { trackerInstance } from '@/init/openreplay';
 
 const { withSiteId } = routes;
 
@@ -16,7 +17,7 @@ function NoSessionsMessage() {
   const { t } = useTranslation();
   const { projectsStore } = useStore();
   const { siteId } = projectsStore;
-  const history = useHistory();
+  const navigate = useNavigate();
   const activeSite = projectsStore.active;
   const showNoSessions = !!activeSite && !activeSite.recorded;
   const onboardingPath = withSiteId(onboardingRoute('installing'), siteId);
@@ -32,10 +33,10 @@ function NoSessionsMessage() {
     <>
       {showNoSessions && (
         <div className="w-full mb-5">
-          <Space direction="vertical" className="w-full!">
+          <Space orientation="vertical" className="w-full!">
             <Alert
-              className="border-transparent rounded-lg w-full"
-              message={t(
+              className="border-transparent rounded-lg w-full flex flex-col md:flex-row"
+              title={t(
                 'Your sessions will appear here soon. It may take a few minutes as sessions are optimized for efficient playback.',
               )}
               type="warning"
@@ -47,17 +48,19 @@ function NoSessionsMessage() {
                     size="small"
                     onClick={openTroubleshoot}
                     icon={
-                      <div className="color-black fill-black">
+                      <div className="color-black fill-black hover:color-primary hover:fill-primary">
                         <SquareArrowOutUpRight size={16} />
                       </div>
                     }
                   >
-                    <div className="text-black">{t('Troubleshoot')}</div>
+                    <div className="text-black hover:text-primary">
+                      {t('Troubleshoot')}
+                    </div>
                   </Button>
                   <Button
                     type="default"
                     size="small"
-                    onClick={() => history.push(onboardingPath)}
+                    onClick={() => navigate(onboardingPath)}
                   >
                     {t('Complete Project Setup')}
                   </Button>
@@ -71,4 +74,4 @@ function NoSessionsMessage() {
   );
 }
 
-export default withRouter(observer(NoSessionsMessage));
+export default observer(NoSessionsMessage);

@@ -62,7 +62,7 @@ export const clean = (
   forbiddenValues: any[] = [undefined, ''],
 ): any => {
   const keys = Array.isArray(obj)
-    ? new Array(obj.length).fill().map((_, i) => i)
+    ? new Array(obj.length).fill(0).map((_, i) => i)
     : Object.keys(obj);
   const retObj = Array.isArray(obj) ? [] : {};
   keys.map((key) => {
@@ -236,7 +236,15 @@ export default class APIClient {
       if (isSaas) {
         if (url.includes('replay-exporter')) return url;
         return url.replace('.com', '.com/v2');
-      } else return url.replace('/api', '/v2/api');
+      } else {
+        try {
+          const urlObj = new URL(url);
+          urlObj.pathname = urlObj.pathname.replace('/api', '/v2/api');
+          return urlObj.toString();
+        } catch {
+          return url.replace('/api', '/v2/api');
+        }
+      }
     };
 
     // using product analytics api for cards and dashboards (excluding sessions)
